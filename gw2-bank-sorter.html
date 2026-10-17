@@ -1,0 +1,1706 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>GW2 Bank Sorter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Marcellus+SC&display=swap">
+<style>
+/* Layout: a vault ledger. Key form up top, a summary strip, the bank grid beside an inspector, then the cleanup plan in in-game order. */
+:root {
+  --bg: #e7eae6;
+  --panel: #f5f6f3;
+  --sunk: #dce1dc;
+  --ink: #1b211e;
+  --muted: #56605b;
+  --line: #ccd3cd;
+  --accent: #1b675b;
+  --accent-ink: #ffffff;
+  --slot: #cfd6d0;
+  --slot-empty: #dde2dd;
+  --pip-ink: #ffffff;
+  --count-ink: #ffffff;
+  --danger: #a3341f;
+  --danger-bg: #f6e3dc;
+
+  /* Item rarity, tuned to read as text on each theme */
+  --r-junk: #868886;
+  --r-basic: #6c726e;
+  --r-fine: #2f73ad;
+  --r-masterwork: #237f10;
+  --r-rare: #937500;
+  --r-exotic: #b46600;
+  --r-ascended: #bf2369;
+  --r-legendary: #6a2fbf;
+
+  /* What to do with a slot */
+  --a-deposit: #2c71a6;
+  --a-use: #7046ad;
+  --a-vendor: #7e6247;
+  --a-salvage: #b14c2b;
+  --a-sell: #8d6c00;
+  --a-stack: #4b6670;
+  --a-destroy: #9a3535;
+
+  --gold: #c39a19;
+  --silver: #9aa1a8;
+  --copper: #a8612f;
+
+  --font-display: "Marcellus SC", "Trajan Pro", Georgia, serif;
+  --font-body: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
+  --font-key: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 7px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1312; --panel: #171d1b; --sunk: #121715; --ink: #e2e8e4; --muted: #93a09a; --line: #2a3330;
+    --accent: #5dbfac; --accent-ink: #0b1311; --slot: #212927; --slot-empty: #161c1a; --pip-ink: #0d1110;
+    --danger: #f08b70; --danger-bg: #2d1914;
+    --r-junk: #9a9a9a; --r-basic: #e6e6e6; --r-fine: #62a4da; --r-masterwork: #3dbb26; --r-rare: #f5cc1a;
+    --r-exotic: #ffa405; --r-ascended: #fb3e8d; --r-legendary: #a671f2;
+    --a-deposit: #6db0e4; --a-use: #b393ea; --a-vendor: #c9a77f; --a-salvage: #ef8a63; --a-sell: #e8bd3d; --a-stack: #92adb6;
+    --a-destroy: #ec7f7f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1312; --panel: #171d1b; --sunk: #121715; --ink: #e2e8e4; --muted: #93a09a; --line: #2a3330;
+  --accent: #5dbfac; --accent-ink: #0b1311; --slot: #212927; --slot-empty: #161c1a; --pip-ink: #0d1110;
+  --danger: #f08b70; --danger-bg: #2d1914;
+  --r-junk: #9a9a9a; --r-basic: #e6e6e6; --r-fine: #62a4da; --r-masterwork: #3dbb26; --r-rare: #f5cc1a;
+  --r-exotic: #ffa405; --r-ascended: #fb3e8d; --r-legendary: #a671f2;
+  --a-deposit: #6db0e4; --a-use: #b393ea; --a-vendor: #c9a77f; --a-salvage: #ef8a63; --a-sell: #e8bd3d; --a-stack: #92adb6;
+  --a-destroy: #ec7f7f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font-body); }
+a { color: var(--accent); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 48px; display: grid; gap: 28px; }
+@media (max-width: 520px) { .wrap { padding-inline: 16px; padding-block: 20px 40px; } }
+
+/* Masthead */
+.masthead { display: grid; gap: 20px; align-items: start; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .masthead { grid-template-columns: minmax(0, 1fr) minmax(0, 470px); } }
+.eyebrow { margin: 0; font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+h1 { margin: 2px 0 10px; font: 400 clamp(2rem, 4.6vw, 2.9rem)/1.05 var(--font-display); letter-spacing: .02em; text-wrap: balance; }
+.lede { margin: 0; max-width: 58ch; color: var(--muted); }
+.lede strong { color: var(--ink); font-weight: 500; }
+
+.keyform { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 10px; }
+.keyform > label { font-weight: 700; font-size: .9rem; }
+.keyrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.keyrow input { flex: 1 1 220px; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); font-family: var(--font-key); font-size: .85rem; }
+.btn { border: 1px solid transparent; border-radius: 5px; padding: 9px 14px; font-weight: 700; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
+.btn:disabled { opacity: .55; cursor: progress; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); font-weight: 500; }
+.keymeta { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: .92rem; }
+.keymeta label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.linkish { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.hint { margin: 0; font-size: .88rem; color: var(--muted); }
+.hint b { color: var(--ink); font-weight: 500; }
+
+/* Status */
+.status:empty { display: none; }
+.status { padding: 10px 14px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); }
+.status.error { background: var(--danger-bg); border-color: var(--danger); color: var(--ink); }
+.status.error strong { color: var(--danger); }
+
+/* Source bar + ledger */
+.results { display: grid; gap: 22px; }
+.sourcebar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.sourcebar h2 { margin: 0; font: 400 1.5rem/1.2 var(--font-display); }
+.sourcebar p { margin: 0; color: var(--muted); font-size: .93rem; }
+.sourcebar .tag { display: inline-block; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; padding: 2px 7px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); margin-right: 8px; vertical-align: 2px; }
+.sourceactions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.ledger { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+@media (min-width: 760px) { .ledger { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.ledger > div { background: var(--panel); padding: 12px 16px; display: grid; gap: 2px; align-content: start; min-width: 0; }
+.ledger dt { font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.ledger dd { margin: 0; font: 400 1.65rem/1.2 var(--font-display); font-variant-numeric: tabular-nums; }
+.ledger dd small { font: 400 .95rem var(--font-body); color: var(--muted); }
+.ledger .sub { font-size: .88rem; color: var(--muted); }
+.meter { height: 5px; border-radius: 3px; background: var(--sunk); overflow: hidden; margin-top: 6px; position: relative; }
+.meter span { position: absolute; inset: 0 auto 0 0; background: var(--muted); opacity: .35; }
+.meter span + span { background: var(--accent); opacity: 1; }
+
+/* Coins */
+.coins { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.coin { display: inline-flex; align-items: center; gap: .18em; margin-right: .35em; }
+.coin:last-child { margin-right: 0; }
+.coin::after { content: ""; width: .62em; height: .62em; border-radius: 50%; background: var(--c); box-shadow: inset 0 -1px 0 rgba(0,0,0,.25); }
+.coin.g { --c: var(--gold); } .coin.s { --c: var(--silver); } .coin.c { --c: var(--copper); }
+.ledger dd .coins { font-size: 1.35rem; }
+
+/* Workspace */
+.workspace { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 980px) { .workspace { grid-template-columns: minmax(0, 1fr) 330px; } }
+.bankhead { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+h2.section { margin: 0; font: 400 1.35rem/1.2 var(--font-display); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; font-weight: 500; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px 3px 4px; cursor: pointer; font-size: .9rem; }
+.chip.all { padding-left: 10px; }
+.chip[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.chip b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.afternote { margin: 0 0 14px; color: var(--muted); font-size: .93rem; max-width: 70ch; }
+
+.bankctl { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.scopefield { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; color: var(--muted); min-width: 0; }
+.scopefield select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); max-width: 100%; }
+.storage { display: grid; gap: 20px; }
+.loc-title { margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font: 400 1.1rem/1.2 var(--font-display); }
+.loc-title span { font: 400 .86rem var(--font-body); color: var(--muted); font-variant-numeric: tabular-nums; }
+.baglabel { display: flex; justify-content: space-between; gap: 8px; margin: 10px 2px 4px; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tabhead + .baglabel { margin-top: 0; }
+.tabs { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 370px), 1fr)); }
+.tab { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; min-width: 0; }
+.tabhead { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; margin: 0 2px 8px; }
+.tabhead h3 { margin: 0; font: 400 1.05rem/1.2 var(--font-display); }
+.tabhead span { font-size: .84rem; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+
+.slot { position: relative; aspect-ratio: 1; max-width: 100%; border-radius: 4px; background: var(--slot); border: 0; padding: 0; overflow: hidden; }
+.slot.empty { background: var(--slot-empty); box-shadow: inset 0 0 0 1px var(--line); }
+button.slot { cursor: pointer; box-shadow: inset 0 0 0 2px var(--rc, var(--line)); }
+.slot img { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); border-radius: 2px; display: block; }
+.slot .noicon { position: absolute; inset: 0; display: grid; place-items: center; font-size: .7rem; color: var(--muted); }
+.slot .cnt { position: absolute; right: 3px; bottom: 1px; font-size: .74rem; font-weight: 700; line-height: 1; color: var(--count-ink); text-shadow: 0 0 2px #000, 0 0 2px #000, 0 1px 1px #000; font-variant-numeric: tabular-nums; }
+.slot .pip { position: absolute; left: 2px; top: 2px; }
+.slot.dim { opacity: .2; filter: grayscale(1); }
+.slot.sel { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 1; }
+.slot.done::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--panel) 65%, transparent); }
+@media (hover: hover) { button.slot:hover { filter: brightness(1.12); } }
+
+.r-Junk { --rc: var(--r-junk); } .r-Basic { --rc: var(--r-basic); } .r-Fine { --rc: var(--r-fine); }
+.r-Masterwork { --rc: var(--r-masterwork); } .r-Rare { --rc: var(--r-rare); } .r-Exotic { --rc: var(--r-exotic); }
+.r-Ascended { --rc: var(--r-ascended); } .r-Legendary { --rc: var(--r-legendary); }
+.rname { color: var(--rc, var(--ink)); }
+
+.pip { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--ac); color: var(--pip-ink); flex: none; box-shadow: 0 0 0 1.5px var(--panel); }
+.slot .pip { width: 15px; height: 15px; }
+.pip svg { width: 70%; height: 70%; }
+.act-deposit { --ac: var(--a-deposit); } .act-use { --ac: var(--a-use); } .act-vendor { --ac: var(--a-vendor); }
+.act-salvage { --ac: var(--a-salvage); } .act-sell { --ac: var(--a-sell); } .act-stack { --ac: var(--a-stack); }
+.act-destroy { --ac: var(--a-destroy); }
+
+/* Inspector */
+.inspector { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; }
+@media (min-width: 980px) { .inspector { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); max-height: calc(100vh - 32px); overflow: auto; } }
+@media (max-width: 979px) {
+  .inspector { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; max-height: 58vh; overflow: auto; border-radius: 12px 12px 0 0; border-width: 1px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 30px rgba(0,0,0,.25); transform: translateY(105%); transition: transform .2s ease; }
+  .inspector.open { transform: none; }
+}
+.ins-close { justify-self: end; margin: -6px -6px -8px 0; }
+@media (min-width: 980px) { .ins-close { display: none; } }
+.ins-empty h3 { margin: 0 0 4px; font: 400 1.1rem var(--font-display); }
+.ins-empty p { margin: 0; color: var(--muted); }
+.ins-top { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: center; }
+.ins-top .slot { width: 56px; }
+.ins-top h3 { margin: 0; font-size: 1.15rem; line-height: 1.25; font-weight: 700; }
+.ins-top p { margin: 2px 0 0; color: var(--muted); font-size: .9rem; }
+.verdict { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: start; padding: 10px 12px; border-radius: 6px; background: var(--sunk); }
+.verdict .pip { margin-top: 2px; }
+.verdict strong { display: block; }
+.verdict p { margin: 0; grid-column: 2; font-size: .93rem; }
+.verdict p.alt { color: var(--muted); }
+.facts { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; font-size: .92rem; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.chatrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chatrow code { font-family: var(--font-key); font-size: .82rem; background: var(--sunk); padding: 3px 6px; border-radius: 4px; user-select: all; overflow-wrap: anywhere; }
+.small { font-size: .85rem; padding: 4px 10px; }
+
+/* Plan */
+.plan { display: grid; gap: 16px; }
+.planhead { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: end; justify-content: space-between; }
+.planhead p { margin: 4px 0 0; color: var(--muted); max-width: 64ch; }
+.capfield { display: grid; gap: 4px; font-size: .88rem; color: var(--muted); }
+.capfield select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); }
+.pgroups { display: grid; gap: 14px; }
+.pgroup { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.pghead { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 12px 14px; }
+.pghead .pip { width: 26px; height: 26px; }
+.pghead h3 { margin: 0; font: 400 1.12rem/1.2 var(--font-display); }
+.pghead .meta { font-size: .88rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.pghead .step { grid-column: 2 / -1; margin: 0; font-size: .92rem; color: var(--muted); max-width: 75ch; }
+.prows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.planprogress { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-top: 6px; font-size: .92rem; font-variant-numeric: tabular-nums; }
+.planprogress:empty { display: none; }
+.prow { display: grid; grid-template-columns: auto 34px minmax(0, 1fr) auto auto; grid-template-areas: "chk icon text val keep" "chk icon loc val keep"; gap: 0 12px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--line); }
+.prow .pkeep { grid-area: keep; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 4px; padding: 2px 8px; font-size: .8rem; cursor: pointer; white-space: nowrap; }
+.prow .pkeep:hover { color: var(--ink); border-color: var(--muted); }
+.prow:first-child { border-top: 0; }
+.prow input { grid-area: chk; width: 17px; height: 17px; accent-color: var(--accent); }
+.prow .slot { grid-area: icon; width: 34px; }
+.prow .ptext { grid-area: text; min-width: 0; display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+.prow .pname { font-weight: 700; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.prow .pname:hover { text-decoration: underline; }
+.prow .preason { color: var(--muted); font-size: .9rem; }
+.prow .ploc { grid-area: loc; font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.prow .pval { grid-area: val; text-align: right; font-size: .95rem; }
+.prow.done .ptext, .prow.done .ploc, .prow.done .pval { opacity: .45; text-decoration: line-through; }
+@media (max-width: 560px) {
+  .prow { grid-template-columns: auto 34px minmax(0, 1fr); grid-template-areas: "chk icon text" "chk icon loc" "chk icon val" "chk icon keep"; }
+  .prow .pval { text-align: left; }
+  .prow .pkeep { justify-self: start; margin-top: 4px; }
+}
+.empty-plan { padding: 18px; background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius); color: var(--muted); }
+.notice { margin: 0; padding: 12px 14px; background: var(--sunk); border: 1px solid var(--line); border-radius: var(--radius); font-size: .93rem; }
+
+.keeplist { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.keeplist summary { cursor: pointer; font: 400 1.05rem/1.3 var(--font-display); }
+.keeplist summary span { font: 400 .9rem var(--font-body); color: var(--muted); }
+.keeplist ul { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.keeplist ul li { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 2px 2px 3px; background: var(--bg); font-size: .9rem; max-width: 100%; }
+.keeplist ul li span:first-child { padding-left: 8px; }
+.keeplist ul li img { width: 22px; height: 22px; border-radius: 50%; flex: none; }
+.keeplist ul li span { min-width: 0; overflow-wrap: anywhere; }
+.keeplist ul li button { border: 0; background: none; cursor: pointer; color: var(--muted); padding: 2px 8px; font-size: .82rem; }
+.keeplist ul li button:hover { color: var(--ink); }
+.keeplist p { margin: 10px 0 0; font-size: .88rem; color: var(--muted); max-width: 75ch; }
+.collrows { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.collrow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.collrow .slot { width: 34px; }
+.collrow .ctext { min-width: 0; display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+.collrow .pname { font-weight: 700; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.collrow .pname:hover { text-decoration: underline; }
+.collrow .preason, .collrow .ploc { color: var(--muted); font-size: .88rem; }
+.collrow .pkeep { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 4px; padding: 2px 8px; font-size: .8rem; cursor: pointer; white-space: nowrap; }
+.collrow .pkeep:hover { color: var(--ink); border-color: var(--muted); }
+@media (max-width: 560px) {
+  .collrow { grid-template-columns: 34px minmax(0, 1fr); }
+  .collrow .pkeep { grid-column: 2; justify-self: start; margin-top: 4px; }
+}
+
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 20; display: flex; gap: 14px; align-items: center; width: max-content; max-width: calc(100% - 32px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.3); font-size: .95rem; }
+.toast button { background: none; border: 0; color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; padding: 0; flex: none; }
+
+footer { color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); padding-top: 14px; }
+footer p { margin: 0 0 4px; max-width: 90ch; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-deposit" viewBox="0 0 16 16"><path d="M8 2v7M4.5 6 8 9.5 11.5 6M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-use" viewBox="0 0 16 16"><path d="M8 1.5 9.6 6.4 14.5 8 9.6 9.6 8 14.5 6.4 9.6 1.5 8 6.4 6.4Z" fill="currentColor"/></symbol>
+  <symbol id="i-vendor" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></symbol>
+  <symbol id="i-salvage" viewBox="0 0 16 16"><path d="M2.5 13.5 9 7M7.5 2.5l6 6-2.2 2.2-6-6Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+  <symbol id="i-sell" viewBox="0 0 16 16"><path d="M2 2.5h5.5L14 9l-5 5-6.5-6.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="5.5" cy="5.8" r="1.4" fill="currentColor"/></symbol>
+  <symbol id="i-stack" viewBox="0 0 16 16"><rect x="2" y="5.5" width="8.5" height="8.5" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5.5 2h8.5v8.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-destroy" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">For Guild Wars 2</p>
+      <h1>Bank Sorter</h1>
+      <p class="lede">Reads your bank through ArenaNet's official API, then tells you what to <strong>deposit</strong>, <strong>use</strong>, <strong>sell</strong> or <strong>salvage</strong> and how to lay out your tabs. It only reads your account. You move the items yourself in game.</p>
+    </div>
+    <form class="keyform" id="keyForm" novalidate>
+      <label for="apiKey">Your API key</label>
+      <div class="keyrow">
+        <input id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-…">
+        <button class="btn" type="submit" id="loadBtn">Load my bank</button>
+      </div>
+      <div class="keymeta">
+        <label for="rememberKey"><input type="checkbox" id="rememberKey"> Remember on this computer</label>
+        <button type="button" class="linkish" id="exampleBtn">Show the example bank</button>
+      </div>
+      <p class="hint">Create one at <a href="https://account.arena.net/applications" target="_blank" rel="noopener">account.arena.net/applications</a> with <b>account</b> and <b>inventories</b> ticked. Tick <b>characters</b> to include every character's bags, <b>unlocks</b> to check which dyes, minis, recipes and skins you already own, and <b>progression</b> to protect items your collections still need. The key is sent only to api.guildwars2.com.</p>
+    </form>
+  </header>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+
+  <main class="results" id="results" hidden>
+    <div class="sourcebar" id="sourceBar"></div>
+    <dl class="ledger" id="ledger"></dl>
+
+    <div class="workspace">
+      <section aria-labelledby="bankTitle">
+        <div class="bankhead">
+          <h2 class="section" id="bankTitle">Bank and bags</h2>
+          <div class="bankctl">
+            <label class="scopefield" id="scopeField" for="scope">Show <select id="scope"></select></label>
+            <div class="seg" role="group" aria-label="Bank view">
+              <button type="button" id="viewNow" aria-pressed="true">Now</button>
+              <button type="button" id="viewAfter" aria-pressed="false">After cleanup</button>
+            </div>
+          </div>
+        </div>
+        <div class="filters" id="filters" role="group" aria-label="Highlight slots by action"></div>
+        <p class="afternote" id="afterNote" hidden>Suggested bank layout once the plan below is done. Every category gets its own tab when you have room; smaller groups share. Split stacks are shown merged.</p>
+        <div class="storage" id="tabs"></div>
+      </section>
+      <aside class="inspector" id="inspector" aria-live="polite" aria-label="Slot details"></aside>
+    </div>
+
+    <section class="plan" aria-labelledby="planTitle">
+      <div class="planhead">
+        <div>
+          <h2 class="section" id="planTitle">Cleanup plan</h2>
+          <p>Work top to bottom and tick items off as you go. Ticks are saved in this browser. The API updates your bank and bags a few minutes after you change them in game, so press Refresh once you're done.</p>
+          <div class="planprogress" id="planProgress"></div>
+        </div>
+        <label class="capfield" for="capacity">Material Storage size per item
+          <select id="capacity"></select>
+        </label>
+      </div>
+      <p class="notice" id="collNotice" hidden><strong>Still checking your collections.</strong> Hold off on selling, salvaging or destroying anything until this finishes. Items your collections still need will drop out of the plan.</p>
+      <div class="pgroups" id="planGroups"></div>
+      <div id="collList"></div>
+      <div id="keepList"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <footer>
+    <p>Not affiliated with ArenaNet. Item names, icons and prices come live from the official Guild Wars 2 API. Trading Post values are after the 15% listing and exchange fees, at the current highest buy order.</p>
+    <p>Guild Wars 2 is a trademark of ArenaNet, LLC.</p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+const API = "https://api.guildwars2.com/v2";
+const TAB_SIZE = 30;
+const STACK_MAX = 250;
+const TP_KEEP = 0.85;          // seller keeps 85% after the 5% listing fee and 10% exchange fee
+const ECTO_ID = 19721;         // Glob of Ectoplasm
+const ECTO_PER_RARE = 0.875;   // average ectoplasm from salvaging a level 68+ rare
+const KEY_STORE = "gw2-bank-sorter.key";
+const CAP_STORE = "gw2-bank-sorter.capacity";
+
+const EQUIP = new Set(["Armor", "Weapon", "Back", "Trinket"]);
+const NO_STACK = new Set([...EQUIP, "Bag", "Tool", "Gathering", "MiniPet"]);
+const RARITIES = ["Junk", "Basic", "Fine", "Masterwork", "Rare", "Exotic", "Ascended", "Legendary"];
+
+const ACTIONS = {
+  deposit: { title: "Send to Material Storage", short: "Deposit",
+    step: "On each character listed, pick Deposit All Materials from the inventory's options menu. Withdraw bank items to an inventory first." },
+  stack:   { title: "Merge split stacks", short: "Stack",
+    step: "Press Compact in the bank window, or in a character's inventory for stacks in their bags. It merges each of these into the matching stack." },
+  use:     { title: "Open, unlock or consume", short: "Use",
+    step: "Double-click each one; withdraw bank items first. Unlocks go to your wardrobe, collections or wallet and stop taking a slot." },
+  vendor:  { title: "Sell to a merchant", short: "Vendor",
+    step: "Sell to any merchant; withdraw bank items first. Sell Junk does the junk in one click." },
+  salvage: { title: "Salvage", short: "Salvage",
+    step: "Salvage with a kit; withdraw bank items first. Rares of level 68 and up can give Globs of Ectoplasm." },
+  sell:    { title: "Sell on the Trading Post", short: "Sell",
+    step: "Sell through the Trading Post from your inventory; withdraw bank items first. Values assume you sell to the highest buy order." },
+  destroy: { title: "Already unlocked, safe to destroy", short: "Destroy",
+    step: "Your account already has these and they can't be sold. Right-click each one and choose Destroy; withdraw bank items first. Destroyed items are gone for good, so skip any you're saving for the Mystic Forge or a collection." },
+};
+const PLAN_ORDER = ["deposit", "stack", "use", "vendor", "salvage", "sell", "destroy"];
+const BUNDLES = new Set(["Toy", "ToyTwoHanded", "SmallBundle", "LargeBundle"]);
+const SKIN_NOTE = "Its skin isn't in your wardrobe yet. Equip it once first if you want the look.";
+
+const CATEGORY_ORDER = ["gear", "upgrades", "consumables", "materials", "trophies", "tools", "other"];
+const CATEGORY_NAMES = {
+  gear: "Gear", upgrades: "Upgrades", consumables: "Consumables", materials: "Crafting materials",
+  trophies: "Trophies & collections", tools: "Tools & gizmos", other: "Everything else",
+};
+
+const UNLOCK_TEXT = {
+  Dye: "Unlocks this dye for every character.",
+  CraftingRecipe: "Teaches a crafting recipe. Use it on a character with that discipline.",
+  BagSlot: "Adds a bag slot to a character.",
+  BankTab: "Adds a bank tab.",
+  CollectibleCapacity: "Expands Material Storage.",
+  SharedSlot: "Adds a shared inventory slot.",
+  Content: "Unlocks content or a collection item.",
+  GliderSkin: "Unlocks a glider skin.",
+  Outfit: "Unlocks an outfit in your wardrobe.",
+  Champion: "Unlocks a Mistlock champion.",
+  Minipet: "Adds a miniature to your collection.",
+  JadeBotSkin: "Unlocks a jade bot skin.",
+  Ms: "Unlocks a mount skin.",
+};
+
+/* ---------- Example bank (made-up contents, real item IDs) ---------- */
+
+const EXAMPLE = {
+  capacity: 1000,
+  storage: { 19721: 400, 24277: 1000, 46731: 1000, 19700: 1000, 19722: 900, 19976: 120, 70820: 600, 19675: 77,
+             12138: 40, 48807: 10, 66650: 300, 24295: 950, 68063: 20, 36041: 1000, 46681: 240 },
+  slots: {
+    0: [30684, 1, { binding: "Account", upgrades: [24615], infusions: [49424] }],
+    1: [46762, 1, { binding: "Account", upgrades: [72339] }],
+    2: [19721, 87], 3: [24836, 6], 4: [1094, 1], 6: [8920, 14],
+    7: [43766, 17, { binding: "Account" }], 8: [24277, 250], 9: [20356, 1], 10: [9476, 38], 11: [24615, 3],
+    13: [36038, 212], 14: [24361, 9, { binding: "Character", bound_to: "Example Character" }], 15: [19976, 38],
+    16: [1059, 1], 17: [12452, 25], 18: [24836, 2], 19: [46731, 250, { binding: "Account" }], 21: [20215, 1],
+    22: [77302, 9, { binding: "Account" }], 23: [9443, 40], 24: [19700, 250],
+    26: [67807, 2, { binding: "Character", bound_to: "Example Character" }], 27: [39612, 1, { binding: "Account" }],
+    28: [9476, 12], 29: [19722, 173],
+    30: [9185, 1], 31: [70820, 180], 32: [1111, 1], 33: [49428, 2], 34: [23045, 1, { charges: 187, binding: "Account" }],
+    35: [38506, 1, { binding: "Account" }], 37: [20323, 17], 38: [19675, 12, { binding: "Account" }], 39: [72339, 1],
+    40: [74326, 2], 42: [1070, 1], 43: [86094, 140, { binding: "Account" }], 44: [20276, 1, { binding: "Account" }],
+    45: [9383, 1, { binding: "Account" }], 46: [36841, 10], 47: [12138, 31], 49: [48807, 22], 50: [66650, 60],
+    51: [100, 1], 52: [24838, 4], 53: [46647, 1, { binding: "Account" }], 54: [77223, 1, { binding: "Account" }],
+    55: [9579, 1], 56: [19980, 3, { binding: "Account" }], 58: [24295, 4], 59: [46644, 1],
+    60: [67027, 1, { binding: "Account" }], 61: [68063, 4], 62: [44641, 1, { binding: "Account" }], 63: [36041, 250],
+    64: [36041, 140], 65: [9443, 25], 66: [49424, 5], 67: [24687, 1], 68: [1128, 1], 69: [8920, 6],
+    75: [12452, 10], 80: [43766, 3, { binding: "Account" }],
+    92: [48884, 3], 100: [46681, 25, { binding: "Account" }],
+  },
+  size: 120,
+  // Pretend unlocks: Abyss Dye, Mini Liadri, the Primeval Warboots and King Toad's Backpack Cover skins, one shoulder skin.
+  owned: { dyes: [473], minis: [170], recipes: [], skins: [1102, 2361, 86] },
+  // Real collections with made-up progress: Luminescent Footwear needs the Laces, Utility Utilizer needs a
+  // Master Tuning Crystal, Style Guide is finished, and the Mini Lynx would count toward a mini collection.
+  collections: [
+    { id: 1779, bits: [0, 1, 2] }, { id: 1729, bits: [2] }, { id: 1715, done: true }, { id: 1708, bits: [0, 1, 2, 3] },
+  ],
+  shared: [[78599, 1, { binding: "Account" }], [19980, 2, { binding: "Account" }], null],
+  characters: [
+    { name: "Example Mesmer", bags: [
+      { id: 8932, size: 20, slots: { 0: [20215, 1], 1: [9383, 1, { binding: "Account" }], 2: [24277, 12], 3: [9476, 6],
+        4: [1059, 1], 5: [43766, 1, { binding: "Account" }] } },
+      null,
+      { id: 9579, size: 18, slots: { 0: [70820, 20] } },
+    ] },
+    { name: "Example Warrior", bags: [
+      { id: 8932, size: 20, slots: { 0: [44602, 1, { binding: "Account" }], 1: [19721, 13], 2: [19700, 60], 3: [8920, 3],
+        4: [24361, 5, { binding: "Character", bound_to: "Example Warrior" }], 5: [1141, 1], 6: [9443, 10], 7: [9443, 5],
+        8: [12452, 5], 9: [20323, 4] } },
+      { id: 9579, size: 18, slots: { 0: [19976, 2], 1: [19722, 40], 2: [20356, 1], 3: [36038, 30] } },
+    ] },
+  ],
+};
+
+const toSlot = entry => entry ? { id: entry[0], count: entry[1], ...(entry[2] || {}) } : null;
+function exampleData() {
+  const bank = new Array(EXAMPLE.size).fill(null);
+  for (const [i, entry] of Object.entries(EXAMPLE.slots)) bank[+i] = toSlot(entry);
+  const characters = EXAMPLE.characters.map(c => ({
+    name: c.name,
+    bags: c.bags.map(b => b && { id: b.id, size: b.size, inventory: Array.from({ length: b.size }, (_, i) => toSlot(b.slots[i])) }),
+  }));
+  return { bank, shared: EXAMPLE.shared.map(toSlot), characters };
+}
+
+/* ---------- Helpers ---------- */
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } },
+  del(k) { try { localStorage.removeItem(k); } catch { /* storage blocked */ } },
+};
+
+class UserError extends Error {}
+
+function coinParts(c) {
+  c = Math.max(0, Math.round(c));
+  return { g: Math.floor(c / 10000), s: Math.floor((c % 10000) / 100), c: c % 100 };
+}
+function coinHTML(c) {
+  const p = coinParts(c);
+  const out = [];
+  if (p.g) out.push(`<span class="coin g">${p.g.toLocaleString()}<span class="sr"> gold</span></span>`);
+  if (p.s || (p.g && p.c)) out.push(`<span class="coin s">${p.s}<span class="sr"> silver</span></span>`);
+  if (p.c || !out.length) out.push(`<span class="coin c">${p.c}<span class="sr"> copper</span></span>`);
+  return `<span class="coins">${out.join("")}</span>`;
+}
+function coinText(c) {
+  const p = coinParts(c);
+  const out = [];
+  if (p.g) out.push(`${p.g.toLocaleString()}g`);
+  if (p.s) out.push(`${p.s}s`);
+  if (p.c || !out.length) out.push(`${p.c}c`);
+  return out.join(" ");
+}
+const plural = (n, one, many = one + "s") => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+// Every place items sit: the bank, shared inventory slots, then each character's bags.
+function buildContainers(bank, shared, characters) {
+  const list = [{ id: "bank", kind: "bank", name: "Bank",
+    cells: bank.map((slot, i) => ({ slot, tab: Math.floor(i / TAB_SIZE) + 1, pos: (i % TAB_SIZE) + 1 })) }];
+  if (shared.length) list.push({ id: "shared", kind: "shared", name: "Shared inventory", cells: shared.map((slot, i) => ({ slot, pos: i + 1 })) });
+  for (const c of [...characters].sort((a, b) => a.name.localeCompare(b.name))) {
+    const cells = [], bags = [];
+    (c.bags || []).forEach((bag, bi) => {
+      if (!bag) return;
+      const inv = bag.inventory || [];
+      bags.push({ n: bi + 1, id: bag.id, start: cells.length, len: inv.length });
+      inv.forEach((slot, j) => cells.push({ slot, bag: bi + 1, pos: j + 1 }));
+    });
+    list.push({ id: `char:${c.name}`, kind: "character", name: c.name, bags, cells });
+  }
+  return list;
+}
+function whereText(c, cell) {
+  if (c.kind === "bank") return `Tab ${cell.tab}, slot ${cell.pos}`;
+  if (c.kind === "shared") return `Shared slot ${cell.pos}`;
+  return `${c.name}, bag ${cell.bag} slot ${cell.pos}`;
+}
+
+function tpUnit(price) { return price ? (price.now || price.list || 0) : 0; }
+function tpTotal(price, count) { return Math.floor(tpUnit(price) * count * TP_KEEP); }
+
+function isTradeable(slot, item) {
+  if (slot.binding) return false;
+  const f = item.flags || [];
+  return !f.includes("AccountBound") && !f.includes("SoulbindOnAcquire");
+}
+function isStackable(slot, item) {
+  return !!item && !NO_STACK.has(item.type) && !slot.charges && !slot.upgrades && !slot.infusions && !slot.skin && !slot.stats;
+}
+const stackKey = slot => `${slot.id}|${slot.binding || ""}|${slot.bound_to || ""}`;
+
+function toOwned({ dyes, minis, recipes, skins }) {
+  return { dyes: new Set(dyes || []), minis: new Set(minis || []), recipes: new Set(recipes || []), skins: new Set(skins || []) };
+}
+
+// true: already on the account. false: not yet. null: can't tell (no unlocks data, or not an unlockable item).
+function isUnlocked(item) {
+  const o = state.owned;
+  if (!o || !item) return null;
+  const d = item.details || {};
+  if (item.type === "MiniPet") return d.minipet_id != null ? o.minis.has(d.minipet_id) : null;
+  if (item.type === "Consumable" && d.type === "Unlock") {
+    if (d.unlock_type === "Dye" && d.color_id != null) return o.dyes.has(d.color_id);
+    if (d.unlock_type === "CraftingRecipe" && d.recipe_id != null) return [d.recipe_id, ...(d.extra_recipe_ids || [])].every(id => o.recipes.has(id));
+    return null;
+  }
+  if (item.type === "Consumable" && d.type === "Transmutation") return d.skins?.length ? d.skins.every(id => o.skins.has(id)) : null;
+  if (EQUIP.has(item.type) && item.default_skin != null && !BUNDLES.has(d.type)) return o.skins.has(item.default_skin);
+  return null;
+}
+
+/* ---------- API ---------- */
+
+async function getJSON(path, params = {}, { auth = false } = {}) {
+  const url = new URL(API + path);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  let res;
+  try { res = await fetch(url); }
+  catch { throw new UserError("Couldn't reach the Guild Wars 2 API. Check your internet connection and try again."); }
+  let body = null;
+  try { body = await res.json(); } catch { /* error pages aren't JSON */ }
+  if (res.ok) return body;                                   // 200, and 206 when some ids were unknown
+  const text = (body && body.text) || "";
+  if (res.status === 404 && /all ids provided are invalid/i.test(text)) return [];
+  if (auth && res.status === 401) throw new UserError("ArenaNet didn't accept this API key. Copy the whole key from your ArenaNet account page and try again.");
+  if (auth && res.status === 403) throw new UserError("This key isn't allowed to read your bank. Create a key with account and inventories ticked.");
+  if (res.status === 429) throw new UserError("The API is limiting requests right now. Wait a minute, then try again.");
+  throw new UserError(`The Guild Wars 2 API answered with an error (${res.status}${text ? `: ${text}` : ""}). It is sometimes down after a game update. Try again in a few minutes.`);
+}
+
+// Fetches ids in chunks of 200 through a small pool of workers, so one slow response doesn't hold up the rest.
+async function getMany(path, ids, { concurrency = 4, onProgress } = {}) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+  const results = new Array(chunks.length);
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < chunks.length) {
+      const i = next++;
+      results[i] = await getJSON(path, { ids: chunks[i].join(","), lang: "en" });
+      onProgress?.(++done, chunks.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, chunks.length) }, worker));
+  return results.flatMap(r => r || []);
+}
+
+/* ---------- Collections ---------- */
+
+// Collection definitions are public and only change with game updates, so a compact copy is cached
+// per game build: achievement id -> [name, bits], where each bit is 0 (text) or [type letter, id].
+const COLL_STORE = "gw2-bank-sorter.collections";
+const COLL_VERSION = 1;
+const BIT_TYPES = { Item: "I", Skin: "S", Minipet: "M" };
+
+function compactAchievements(list) {
+  const out = {};
+  for (const a of list || []) {
+    const bits = (a.bits || []).map(b => BIT_TYPES[b.type] && b.id != null ? [BIT_TYPES[b.type], b.id] : 0);
+    if (bits.some(Boolean)) out[a.id] = [a.name, bits];
+  }
+  return out;
+}
+
+// One download at a time: a Refresh while it's running reuses the same request.
+let defsInFlight = null;
+function collectionDefs() {
+  defsInFlight ||= fetchCollectionDefs().finally(() => { defsInFlight = null; });
+  return defsInFlight;
+}
+
+async function fetchCollectionDefs() {
+  const build = await getJSON("/build").then(b => b?.id ?? null, () => null);
+  try {
+    const cached = JSON.parse(store.get(COLL_STORE) || "null");
+    if (cached && cached.v === COLL_VERSION && build && cached.build === build) return cached.data;
+  } catch { /* unreadable cache: fetch again */ }
+  const ids = (await getJSON("/achievements")) || [];
+  const list = await getMany("/achievements", ids, {
+    concurrency: 8,
+    onProgress: (n, total) => setStatus(`Checking your collections (${n} of ${total}). This only takes a while after a game update…`),
+  });
+  const data = compactAchievements(list);
+  if (build) store.set(COLL_STORE, JSON.stringify({ v: COLL_VERSION, build, data }));
+  return data;
+}
+
+// What unfinished collections still need, by item, skin and mini id. Finished pieces are left out.
+function buildNeeds(defs, progress) {
+  const prog = new Map((progress || []).map(p => [p.id, p]));
+  const needs = { items: new Map(), skins: new Map(), minis: new Map(), names: new Map() };
+  const maps = { I: needs.items, S: needs.skins, M: needs.minis };
+  for (const [aid, [name, bits]] of Object.entries(defs)) {
+    const p = prog.get(+aid);
+    if (p?.done) continue;
+    const have = new Set(p?.bits || []);
+    const coll = { id: +aid, name };
+    needs.names.set(+aid, name);
+    bits.forEach((b, i) => {
+      if (!b || have.has(i)) return;
+      const map = maps[b[0]];
+      if (!map.has(b[1])) map.set(b[1], []);
+      if (!map.get(b[1]).some(c => c.id === coll.id)) map.get(b[1]).push(coll);
+    });
+  }
+  return needs;
+}
+
+// Collections still needing an item, skin or mini, minus the ones the player chose to ignore.
+function needsFor(kind, id) {
+  if (!state.needs || id == null) return [];
+  return (state.needs[kind].get(id) || []).filter(c => !prefs.ignore.has(c.id));
+}
+function collText(list, start = true) {
+  const first = `${start ? "The" : "the"} ${list[0].name} collection`;
+  return list.length > 1 ? `${first} and ${plural(list.length - 1, "other")}` : first;
+}
+
+async function loadCatalog(containers) {
+  const all = containers.flatMap(c => c.cells.map(cell => cell.slot)).filter(Boolean);
+  const bagIds = containers.flatMap(c => (c.bags || []).map(b => b.id));
+  const ids = [...new Set([...all.map(s => s.id), ...bagIds])];
+  setStatus(`Looking up ${plural(ids.length, "item")}…`);
+  const [itemList, matCats] = await Promise.all([getMany("/items", ids), getJSON("/materials", { ids: "all", lang: "en" })]);
+  const items = new Map(itemList.map(i => [i.id, i]));
+
+  const tradeIds = new Set([ECTO_ID]);
+  for (const s of all) if (items.has(s.id) && isTradeable(s, items.get(s.id))) tradeIds.add(s.id);
+  setStatus("Checking Trading Post prices…");
+  const priceList = await getMany("/commerce/prices", [...tradeIds]);
+  const prices = new Map(priceList.map(p => [p.id, { now: p.buys?.unit_price || 0, list: p.sells?.unit_price || 0 }]));
+
+  const storable = new Map();
+  for (const cat of matCats || []) cat.items.forEach((id, i) => storable.set(id, { name: cat.name, order: (cat.order ?? cat.id) * 1000 + i }));
+  return { items, prices, storable };
+}
+
+/* ---------- State ---------- */
+
+let state = null;
+let ui = { view: "now", scope: "all", filter: null, selected: null };
+let busy = false;
+
+// Saved per account in this browser: the always-keep list (item id -> name and icon) and ticked plan rows.
+let prefs = { keep: new Map(), done: new Set() };
+const PREF_STORE = "gw2-bank-sorter.prefs.";
+const prefKey = () => PREF_STORE + (state.source === "example" ? "~example" : state.name);
+// A tick belongs to an item in a place, so it survives reloads and clears itself once the item is gone.
+const doneKey = s => `${s.where}|${s.slot.id}`;
+
+function loadPrefs() {
+  let p = {};
+  try { p = JSON.parse(store.get(prefKey()) || "{}") || {}; } catch { p = {}; }
+  prefs = {
+    keep: new Map(Object.entries(p.keep || {}).map(([id, v]) => [+id, v])),
+    done: new Set(Array.isArray(p.done) ? p.done : []),
+    ignore: new Map(Object.entries(p.ignore || {}).map(([id, name]) => [+id, name])),   // collections the player isn't doing
+  };
+}
+function savePrefs() {
+  store.set(prefKey(), JSON.stringify({ keep: Object.fromEntries(prefs.keep), done: [...prefs.done], ignore: Object.fromEntries(prefs.ignore) }));
+}
+
+async function loadExample() {
+  return withBusy(async () => {
+    const { bank, shared, characters } = exampleData();
+    const containers = buildContainers(bank, shared, characters);
+    const [catalog, needs] = await Promise.all([
+      loadCatalog(containers),
+      getMany("/achievements", EXAMPLE.collections.map(c => c.id))
+        .then(list => buildNeeds(compactAchievements(list), EXAMPLE.collections), () => null),
+    ]);
+    state = {
+      source: "example", name: "Example bank", loadedAt: new Date(), bank, containers, ...catalog,
+      storage: new Map(Object.entries(EXAMPLE.storage).map(([k, v]) => [+k, v])),
+      capacity: EXAMPLE.capacity, inferred: EXAMPLE.capacity,
+      owned: toOwned(EXAMPLE.owned), unlocks: "checked", chars: "checked",
+      needs, colls: needs ? "checked" : "failed",
+    };
+    resetUI();
+  });
+}
+
+async function loadCharacters(key) {
+  const names = (await getJSON("/characters", { access_token: key }, { auth: true })) || [];
+  const out = [];
+  for (let i = 0; i < names.length; i += 6) {
+    setStatus(`Reading character bags (${Math.min(i + 6, names.length)} of ${names.length})…`);
+    const batch = await Promise.all(names.slice(i, i + 6).map(name =>
+      getJSON(`/characters/${encodeURIComponent(name)}/inventory`, { access_token: key }, { auth: true })
+        .then(inv => ({ name, bags: inv?.bags || [] }))));
+    out.push(...batch);
+  }
+  return out;
+}
+
+async function loadAccount(key) {
+  return withBusy(async () => {
+    setStatus("Checking your key…");
+    const token = await getJSON("/tokeninfo", { access_token: key }, { auth: true });
+    const perms = new Set(token.permissions || []);
+    const missing = ["account", "inventories"].filter(p => !perms.has(p));
+    if (missing.length) throw new UserError(`This key is missing the ${missing.join(" and ")} permission. Create a new key with account and inventories ticked.`);
+
+    // Unlocks are optional: without the permission, or if the call fails, the page still works without ownership checks.
+    const canCheck = perms.has("unlocks");
+    const unlockLists = canCheck
+      ? Promise.all(["dyes", "minis", "recipes", "skins"].map(n => getJSON(`/account/${n}`, { access_token: key }, { auth: true })))
+          .then(([dyes, minis, recipes, skins]) => toOwned({ dyes, minis, recipes, skins }))
+          .catch(() => null)
+      : Promise.resolve(null);
+    // Character bags are optional too: they need the characters permission.
+    const canChars = perms.has("characters");
+    const charList = canChars ? loadCharacters(key).catch(() => null) : Promise.resolve(null);
+    // Collection protection needs the progression permission for the player's achievement progress.
+    const canColls = perms.has("progression");
+    const collNeeds = canColls
+      ? Promise.all([collectionDefs(), getJSON("/account/achievements", { access_token: key }, { auth: true })])
+          .then(([defs, progress]) => buildNeeds(defs, progress))
+          .catch(() => null)
+      : Promise.resolve(null);
+
+    setStatus("Reading your bank, Material Storage and inventories…");
+    const [account, bank, mats, shared, owned, characters] = await Promise.all([
+      getJSON("/account", { access_token: key }, { auth: true }),
+      getJSON("/account/bank", { access_token: key }, { auth: true }),
+      getJSON("/account/materials", { access_token: key }, { auth: true }),
+      getJSON("/account/inventory", { access_token: key }, { auth: true }).catch(() => []),
+      unlockLists,
+      charList,
+    ]);
+    const containers = buildContainers(bank || [], shared || [], characters || []);
+    const catalog = await loadCatalog(containers);
+    const storage = new Map((mats || []).map(m => [m.id, m.count]));
+    let top = 0;
+    for (const n of storage.values()) top = Math.max(top, n);
+    const inferred = Math.max(250, Math.ceil(top / 250) * 250);
+    const saved = parseInt(store.get(CAP_STORE), 10);
+    state = {
+      source: "account", name: account?.name || "Your account", loadedAt: new Date(), bank: bank || [], containers, ...catalog,
+      storage, inferred, capacity: saved >= 250 ? Math.max(saved, inferred) : inferred, key,
+      owned, unlocks: owned ? "checked" : canCheck ? "failed" : "missing",
+      chars: characters ? "checked" : canChars ? "failed" : "missing",
+      needs: null, colls: canColls ? "loading" : "missing",
+    };
+    resetUI();
+    // Collection data can take a while on the first visit after a game update, so the bank shows
+    // without it and the plan updates once it arrives.
+    if (canColls) {
+      const loaded = state;
+      collNeeds.then(needs => {
+        if (state !== loaded) return;
+        state.needs = needs;
+        state.colls = needs ? "checked" : "failed";
+        setStatus("");
+        render();
+      });
+    }
+  });
+}
+
+async function withBusy(fn) {
+  if (busy) return;
+  busy = true;
+  $("#loadBtn").disabled = true;
+  try {
+    await fn();
+    setStatus("");
+    render();
+  } catch (err) {
+    setStatus(err instanceof UserError ? err.message : `Something went wrong while reading the API: ${err.message}`, true);
+  } finally {
+    busy = false;
+    $("#loadBtn").disabled = false;
+  }
+}
+
+function resetUI() {
+  ui = { view: "now", scope: "all", filter: null, selected: null };
+  loadPrefs();
+}
+
+function setStatus(msg, isError = false) {
+  const el = $("#status");
+  el.className = "status" + (isError ? " error" : "");
+  el.innerHTML = msg ? (isError ? `<strong>Couldn't load the bank.</strong> ${esc(msg)}` : esc(msg)) : "";
+}
+
+/* ---------- Analysis ---------- */
+
+function analyze() {
+  const { items, prices, storable, storage, capacity, containers } = state;
+  const startRoom = id => Math.max(0, capacity - (storage.get(id) || 0));
+  const room = new Map();
+  const roomFor = id => {
+    if (!room.has(id)) room.set(id, startRoom(id));
+    return room.get(id);
+  };
+  const ecto = prices.get(ECTO_ID);
+  const ectoValue = Math.floor(tpUnit(ecto) * TP_KEEP);
+  // Material Storage room, first copies of unlock items and copies kept for collections are shared
+  // across every location, bank first.
+  const ctx = { roomFor, room, startRoom, storable, ectoValue, claimed: new Map(), collKept: new Map(), keep: prefs.keep };
+
+  const slots = [];
+  for (const c of containers) {
+    for (const cell of c.cells) {
+      const base = { index: slots.length, cid: c.id, kind: c.kind, tab: cell.tab, bag: cell.bag, pos: cell.pos, where: whereText(c, cell), slot: cell.slot };
+      if (!cell.slot) { slots.push({ ...base, action: "empty" }); continue; }
+      const item = items.get(cell.slot.id);
+      if (!item) { slots.push({ ...base, action: "keep", reason: "The API has no details for this item yet." }); continue; }
+      const price = isTradeable(cell.slot, item) ? prices.get(cell.slot.id) : null;
+      slots.push({ ...base, item, price, ...classify(cell.slot, item, price, ctx, base.where) });
+    }
+  }
+
+  // Split stacks of the same item in one bank or one character's bags: the biggest stacks stay,
+  // Compact folds the rest into them. Shared slots have no Compact, so they're left alone.
+  const groups = new Map();
+  for (const s of slots) {
+    if (s.action !== "keep" || s.kind === "shared" || !isStackable(s.slot, s.item)) continue;
+    const k = `${s.cid}|${stackKey(s.slot)}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(s);
+  }
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const total = g.reduce((n, s) => n + s.slot.count, 0);
+    const need = Math.ceil(total / STACK_MAX);
+    // The copy kept for a collection stays put; otherwise the biggest stacks do.
+    const sorted = [...g].sort((a, b) => !!b.forCollections - !!a.forCollections || b.slot.count - a.slot.count || a.index - b.index);
+    for (const s of sorted.slice(need)) {
+      s.action = "stack";
+      s.reason = `Same item as the stack in ${sorted[0].where}. Compact merges them.`;
+    }
+  }
+
+  const freeing = new Set(["stack", "use", "vendor", "salvage", "sell", "destroy"]);
+  const frees = s => s.slot && (freeing.has(s.action) || (s.action === "deposit" && !s.partial));
+  const bankSlots = slots.filter(s => s.kind === "bank");
+  const sum = act => slots.filter(s => s.slot && s.action === act).reduce((n, s) => n + (s.value || 0), 0);
+  const byContainer = new Map(containers.map(c => [c.id, slots.filter(s => s.cid === c.id)]));
+
+  return {
+    slots, byContainer,
+    bank: { filled: bankSlots.filter(s => s.slot).length, total: bankSlots.length, freed: bankSlots.filter(frees).length },
+    filled: slots.filter(s => s.slot).length, freed: slots.filter(frees).length,
+    sell: sum("sell"), vendor: sum("vendor"), layout: planLayout(bankSlots),
+  };
+}
+
+// Checks that apply to every item first (Material Storage, always-keep, collections), then the item's own rules.
+function classify(slot, item, price, ctx, where) {
+  const count = slot.count || 1;
+  const tp = price ? tpTotal(price, count) : 0;
+  // Always-keep items can still be deposited or stacked (nothing is lost), but never sold, used, salvaged or destroyed.
+  const pinned = ctx.keep.has(item.id);
+  const KEPT = "On your always-keep list.";
+
+  if (ctx.storable.has(item.id)) {
+    const free = ctx.roomFor(item.id);
+    if (free >= count) {
+      ctx.room.set(item.id, free - count);
+      return { action: "deposit", deposit: count, pinned, reason: `Material Storage has room for all ${count.toLocaleString()}.` };
+    }
+    if (free > 0) {
+      ctx.room.set(item.id, 0);
+      const left = count - free;
+      const leftValue = price ? tpTotal(price, left) : 0;
+      return { action: "deposit", partial: true, deposit: free, pinned,
+        reason: `Storage has room for ${free.toLocaleString()} of ${count.toLocaleString()}. The other ${left.toLocaleString()} stay behind.`,
+        alt: !pinned && leftValue >= 100 ? `Selling those ${left.toLocaleString()} would bring ${coinText(leftValue)}.` : "" };
+    }
+    const full = ctx.startRoom(item.id) > 0
+      ? "The deposits above fill Material Storage for this"
+      : "Material Storage is already full of this";
+    if (pinned) return { action: "keep", pinned, reason: `${KEPT} ${full}, so it stays where it is.` };
+    if (tp > 0) return { action: "sell", value: tp, reason: `${full}, so the stack is surplus.` };
+    return { action: "keep", reason: `${full} and it can't be sold. Keep it for crafting.` };
+  }
+  if (pinned) return { action: "keep", pinned, reason: KEPT };
+
+  // An unfinished collection needs one copy: keep the first one found and point the others at it.
+  // Materials never get here; Material Storage already counts as having one.
+  const colls = needsFor("items", item.id);
+  if (colls.length) {
+    const kept = ctx.collKept.get(item.id);
+    if (!kept) {
+      ctx.collKept.set(item.id, where);
+      return { action: "keep", forCollections: colls,
+        reason: `${collText(colls)} still ${colls.length > 1 ? "need" : "needs"} this.`,
+        alt: "Open the collection in your Hero panel to see how to add it." };
+    }
+    const r = classifyItem(slot, item, price, ctx, where);
+    if (r.action !== "keep") r.alt = [r.alt, `The copy in ${kept} is kept for ${collText(colls, false)}.`].filter(Boolean).join(" ");
+    return r;
+  }
+  return classifyItem(slot, item, price, ctx, where);
+}
+
+function classifyItem(slot, item, price, ctx, where) {
+  const count = slot.count || 1;
+  const d = item.details || {};
+  const flags = new Set(item.flags || []);
+  const tp = price ? tpTotal(price, count) : 0;
+  const ifOwned = tp >= 100 ? `Already have it? It sells for ${coinText(tp)}.` : "";
+
+  if (item.rarity === "Junk") {
+    if (item.vendor_value > 0 && !flags.has("NoSell")) return { action: "vendor", value: item.vendor_value * count, reason: "Junk. Merchants buy it and nothing else uses it." };
+    return { action: "keep", reason: "Junk that merchants won't buy. You can destroy it." };
+  }
+  const unlocked = isUnlocked(item);
+  const isUnlockItem = item.type === "MiniPet" || (item.type === "Consumable" && (d.type === "Unlock" || d.type === "Transmutation"));
+  if (isUnlockItem) {
+    const miniColls = item.type === "MiniPet" ? needsFor("minis", d.minipet_id) : [];
+    const what = (item.type === "MiniPet" ? "Adds this miniature to your collection."
+      : d.type === "Transmutation" ? "Unlocks this skin in your wardrobe."
+      : UNLOCK_TEXT[d.unlock_type] || "Unlocks something for your account.")
+      + (miniColls.length ? ` It also counts toward ${collText(miniColls, false)}.` : "");
+    if (unlocked === true) return { unlocked, ...alreadyOwned(item, flags, count, tp, "You already have this unlocked") };
+    // Only one copy needs using; any other copy becomes a spare once it has been.
+    const first = ctx.claimed.get(item.id);
+    if (first) return { unlocked, ...alreadyOwned(item, flags, count, tp, `A spare. You'll have this once you use the copy in ${first}`) };
+    ctx.claimed.set(item.id, where);
+    if (unlocked === false) return { unlocked, action: "use", reason: `${what} You don't have it yet.`, alt: tp >= 100 ? `If you don't want it, it sells for ${coinText(tp)}.` : "" };
+    return { action: "use", reason: what, alt: ifOwned };
+  }
+  if (item.type === "Consumable" && d.type === "Currency") return { action: "use", reason: "Adds to your wallet, where it takes no space." };
+  if (item.type === "Container") return { action: "use", reason: "A container. Open it and keep only what you want from inside.", alt: tp >= 100 ? `Or sell it unopened for ${coinText(tp)}.` : "" };
+  if (EQUIP.has(item.type)) {
+    const r = classifyGear(slot, item, flags, count, tp, ctx.ectoValue, unlocked);
+    const skinColls = unlocked === true ? [] : needsFor("skins", item.default_skin);
+    if (skinColls.length && r.action !== "keep") r.alt = `Equip it once first: its skin counts toward ${collText(skinColls, false)}.`;
+    else if (unlocked === false && r.action !== "keep" && !r.alt) r.alt = SKIN_NOTE;
+    return { unlocked, ...r };
+  }
+  return { action: "keep", reason: keepReason(item) };
+}
+
+// For an item whose unlock the account already has: sell it, then salvage (gear only), then vendor, else destroy.
+function alreadyOwned(item, flags, count, tp, lead, allowSalvage = false) {
+  if (tp >= 100) return { action: "sell", value: tp, reason: `${lead}.` };
+  if (allowSalvage && !flags.has("NoSalvage")) return { action: "salvage", reason: `${lead}. Salvage it for materials.` };
+  if (item.vendor_value > 0 && !flags.has("NoSell")) return { action: "vendor", value: item.vendor_value * count, reason: `${lead}. A merchant will buy it.` };
+  if (tp > 0) return { action: "sell", value: tp, reason: `${lead}.` };
+  return { action: "destroy", reason: `${lead}, and it can't be sold.` };
+}
+
+function classifyGear(slot, item, flags, count, tp, ectoValue, unlocked) {
+  const canSalvage = !flags.has("NoSalvage");
+  const keep = (reason, alt = "") => ({ action: "keep", reason, alt });
+  if (item.rarity === "Ascended" || item.rarity === "Legendary") return keep(`${item.rarity} gear. Keep it.`);
+  if (item.level === 0) {
+    if (unlocked === true) return { ...alreadyOwned(item, flags, count, tp, "Its skin is already in your wardrobe", true), alt: "Some collections ask for the item itself, so check that first." };
+    if (unlocked === false) return keep("Its skin isn't in your wardrobe yet. Equip it once to unlock the skin.");
+    return keep("Level 0 equipment is usually a skin or a special item. Check your wardrobe before you get rid of it.");
+  }
+  if (slot.skin) return keep("A skin has been applied to this piece.");
+  if (item.rarity === "Exotic" && item.level === 80) return keep("Level 80 exotic. Keep it if a build uses it.", tp ? `If not, it sells for ${coinText(tp)}.` : "");
+
+  if (item.rarity === "Rare" && item.level >= 68 && canSalvage) {
+    const ev = Math.floor(ECTO_PER_RARE * ectoValue * count);
+    if (tp > ev) return { action: "sell", value: tp, reason: `Sells for more than the Globs of Ectoplasm salvaging would average (about ${coinText(ev)}).` };
+    return { action: "salvage", value: ev, reason: `Salvaging averages about 0.9 Globs of Ectoplasm, worth about ${coinText(ev)}${tp ? `. Selling would bring ${coinText(tp)}` : ""}.` };
+  }
+  const tier = item.level < 80 ? `Level ${item.level}` : `${item.rarity} quality`;
+  if (tp >= 100) return { action: "sell", value: tp, reason: `${tier}, so it's outdated for a level 80 character.` };
+  if (canSalvage) return { action: "salvage", reason: `${tier}. Salvage it for crafting materials.` };
+  if (item.vendor_value > 0 && !flags.has("NoSell")) return { action: "vendor", value: item.vendor_value * count, reason: `${tier} and it can't be salvaged.` };
+  return keep("It can't be salvaged or sold.");
+}
+
+function keepReason(item) {
+  switch (item.type) {
+    case "UpgradeComponent": return "Runes, sigils and infusions are worth keeping for builds.";
+    case "Consumable": return "A consumable. Keep it if you use it. It can't go to Material Storage.";
+    case "Tool": case "Gathering": return "A tool. Keep it.";
+    case "Gizmo": return "A special item. Keep it.";
+    case "Bag": return "A spare bag. Equip it, or keep it for a new character.";
+    case "Trophy": return "A trophy or collection item. Check whether a collection still needs it.";
+    case "CraftingMaterial": return "A crafting material that Material Storage doesn't take.";
+    default: return "Nothing to do with this one.";
+  }
+}
+
+/* ---------- Suggested layout ---------- */
+
+function categoryOf(item) {
+  if (!item) return "other";
+  if (EQUIP.has(item.type)) return "gear";
+  if (item.type === "UpgradeComponent") return "upgrades";
+  if (state.storable.has(item.id) || item.type === "CraftingMaterial") return "materials";
+  if (item.type === "Consumable") return "consumables";
+  if (item.type === "Trophy") return "trophies";
+  if (["Tool", "Gathering", "Gizmo", "Bag", "Key"].includes(item.type)) return "tools";
+  return "other";
+}
+
+function sortKey(e) {
+  const it = e.item;
+  if (!it) return ["~", ""];
+  const rar = String(9 - RARITIES.indexOf(it.rarity));
+  const sub = (it.details && it.details.type) || "";
+  switch (e.cat) {
+    case "gear": return [{ Weapon: 0, Armor: 1, Back: 2, Trinket: 3 }[it.type] ?? 9, sub, rar, String(999 - it.level).padStart(3, "0"), it.name];
+    case "upgrades": return [{ Rune: 0, Sigil: 1, Gem: 2, Default: 3 }[sub] ?? 9, rar, it.name];
+    case "materials": return [String(state.storable.get(it.id)?.order ?? 999999).padStart(7, "0"), it.name];
+    default: return [it.type, sub, it.name];
+  }
+}
+function compareEntries(a, b) {
+  const ka = sortKey(a), kb = sortKey(b);
+  for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
+    const x = ka[i] ?? "", y = kb[i] ?? "";
+    if (x < y) return -1;
+    if (x > y) return 1;
+  }
+  return 0;
+}
+
+function planLayout(slots) {
+  const entries = [];
+  const merged = new Map();
+  for (const s of slots) {
+    const stays = s.action === "keep" || s.action === "stack" || (s.action === "deposit" && s.partial);
+    if (!stays) continue;
+    const count = s.action === "deposit" ? s.slot.count - s.deposit : (s.slot.count || 1);
+    if (isStackable(s.slot, s.item)) {
+      const k = stackKey(s.slot);
+      if (!merged.has(k)) merged.set(k, { item: s.item, slot: s.slot, count: 0, from: [] });
+      const m = merged.get(k);
+      m.count += count;
+      m.from.push(s);
+    } else {
+      entries.push({ item: s.item, slot: s.slot, count, from: [s] });
+    }
+  }
+  for (const m of merged.values()) {
+    for (let left = m.count; left > 0; left -= STACK_MAX) entries.push({ ...m, count: Math.min(STACK_MAX, left) });
+  }
+  for (const e of entries) e.cat = categoryOf(e.item);
+
+  const cats = CATEGORY_ORDER
+    .map(id => ({ id, entries: entries.filter(e => e.cat === id).sort(compareEntries) }))
+    .filter(c => c.entries.length);
+  const tabCount = Math.max(1, Math.ceil(state.bank.length / TAB_SIZE));
+  return packTabs(cats, tabCount);
+}
+
+function packTabs(cats, tabCount) {
+  const chunk = c => {
+    const out = [];
+    for (let i = 0; i < c.entries.length; i += TAB_SIZE) out.push({ cat: c.id, entries: c.entries.slice(i, i + TAB_SIZE) });
+    return out;
+  };
+  const size = t => t.reduce((n, p) => n + p.entries.length, 0);
+  // Every category starts in its own tab(s). While that needs more tabs than the bank has,
+  // merge the smallest neighbouring pair that still fits in one tab, so the order stays intact.
+  let tabs = cats.flatMap(c => chunk(c).map(part => [part]));
+  while (tabs.length > tabCount) {
+    let best = -1;
+    for (let i = 0; i < tabs.length - 1; i++) {
+      const n = size(tabs[i]) + size(tabs[i + 1]);
+      if (n <= TAB_SIZE && (best < 0 || n < size(tabs[best]) + size(tabs[best + 1]))) best = i;
+    }
+    if (best < 0) break;
+    tabs.splice(best, 2, [...tabs[best], ...tabs[best + 1]]);
+  }
+  if (tabs.length > tabCount) {
+    // Not enough tabs to keep groups apart: flow everything in category order.
+    const flat = cats.flatMap(c => c.entries);
+    tabs = [];
+    for (let i = 0; i < flat.length; i += TAB_SIZE) {
+      const parts = [];
+      for (const e of flat.slice(i, i + TAB_SIZE)) {
+        if (!parts.length || parts[parts.length - 1].cat !== e.cat) parts.push({ cat: e.cat, entries: [] });
+        parts[parts.length - 1].entries.push(e);
+      }
+      tabs.push(parts);
+    }
+  }
+  while (tabs.length < tabCount) tabs.push([]);
+  return tabs.map(parts => ({ parts, entries: parts.flatMap(p => p.entries) }));
+}
+
+/* ---------- Rendering ---------- */
+
+let result = null;
+
+function render() {
+  if (!state) return;
+  result = analyze();
+  // Drop ticks for items that have since moved or been dealt with.
+  const live = new Set(result.slots.filter(s => s.slot).map(doneKey));
+  const before = prefs.done.size;
+  for (const k of prefs.done) if (!live.has(k)) prefs.done.delete(k);
+  if (prefs.done.size !== before) savePrefs();
+  $("#results").hidden = false;
+  renderSource();
+  renderLedger();
+  renderCapacity();
+  renderScope();
+  renderBank();
+  renderInspector();
+  renderPlan();
+}
+
+function renderSource() {
+  const time = state.loadedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const el = $("#sourceBar");
+  const unlockLine = {
+    checked: "Checked against the dyes, miniatures, recipes and skins your account already has.",
+    missing: "Your key doesn't have the unlocks permission, so dyes, minis, recipes and skins aren't checked against what you own. Create a key with unlocks ticked to turn that on.",
+    failed: "Couldn't read your unlocks from the API this time, so dyes, minis, recipes and skins aren't checked. Refresh to try again.",
+  }[state.unlocks] || "";
+  const charCount = state.containers.filter(c => c.kind === "character").length;
+  const charLine = {
+    checked: `Includes the bags of ${plural(charCount, "character")} and your shared inventory slots.`,
+    missing: "Your key doesn't have the characters permission, so only the bank and shared inventory slots are checked. Create a key with characters ticked to include every character's bags.",
+    failed: "Couldn't read your characters' bags from the API this time. Refresh to try again.",
+  }[state.chars] || "";
+  const collLine = {
+    loading: "Checking your collections. The plan updates when that's done.",
+    checked: "Items your unfinished collections still need are kept out of the plan.",
+    missing: "Your key doesn't have the progression permission, so items your collections still need aren't protected. Create a key with progression ticked to turn that on.",
+    failed: "Couldn't read your collections from the API this time, so collection items aren't protected. Refresh to try again.",
+  }[state.colls] || "";
+  if (state.source === "example") {
+    el.innerHTML = `<div><h2><span class="tag">Example</span>Example bank</h2>
+      <p>Made-up contents, characters, unlocks and collection progress so you can see how it works. Names, icons, prices and collections are live from the API. Paste your key above to load your own account.</p></div>`;
+  } else {
+    el.innerHTML = `<div><h2>${esc(state.name)}</h2><p>Read at ${esc(time)}. ${plural(Math.ceil(state.bank.length / TAB_SIZE), "bank tab")}. ${esc(charLine)} ${esc(unlockLine)} ${esc(collLine)}</p></div>
+      <div class="sourceactions"><button class="btn ghost small" type="button" id="refreshBtn">Refresh</button>${store.get(KEY_STORE) ? `<button class="btn ghost small" type="button" id="forgetBtn">Forget my key</button>` : ""}</div>`;
+    $("#refreshBtn").addEventListener("click", () => loadAccount(state.key));
+    $("#forgetBtn")?.addEventListener("click", () => { store.del(KEY_STORE); $("#rememberKey").checked = false; renderSource(); });
+  }
+}
+
+function renderLedger() {
+  const r = result;
+  const b = r.bank;
+  const after = b.filled - b.freed;
+  const pctNow = b.total ? (b.filled / b.total) * 100 : 0;
+  const pctAfter = b.total ? (after / b.total) * 100 : 0;
+  const sellCount = r.slots.filter(s => s.action === "sell").length;
+  const vendorCount = r.slots.filter(s => s.action === "vendor").length;
+  const elsewhere = r.freed - b.freed;
+  const freedSub = state.containers.length > 1
+    ? `${b.freed.toLocaleString()} in the bank, ${elsewhere.toLocaleString()} in bags and shared slots`
+    : `${Math.round((r.freed / Math.max(1, r.filled)) * 100)}% of what's stored`;
+  $("#ledger").innerHTML = `
+    <div><dt>Bank slots used</dt><dd>${b.filled.toLocaleString()} <small>of ${b.total.toLocaleString()}</small></dd>
+      <div class="meter" aria-hidden="true"><span style="width:${pctNow}%"></span><span style="width:${pctAfter}%"></span></div>
+      <span class="sub">${after.toLocaleString()} after cleanup</span></div>
+    <div><dt>Slots you can free</dt><dd>${r.freed.toLocaleString()}</dd><span class="sub">${freedSub}</span></div>
+    <div><dt>Trading Post sales</dt><dd>${coinHTML(r.sell)}</dd><span class="sub">${plural(sellCount, "stack")}, after fees</span></div>
+    <div><dt>Merchant sales</dt><dd>${coinHTML(r.vendor)}</dd><span class="sub">${plural(vendorCount, "stack")} to sell to merchants</span></div>`;
+}
+
+function renderCapacity() {
+  const sel = $("#capacity");
+  const opts = [];
+  for (let n = 250; n <= 5000; n += 250) opts.push(n);
+  if (!opts.includes(state.capacity)) opts.push(state.capacity);
+  opts.sort((a, b) => a - b);
+  sel.innerHTML = opts.map(n => `<option value="${n}"${n === state.capacity ? " selected" : ""}>${n.toLocaleString()}${n === state.inferred ? (state.source === "example" ? "" : " (estimated)") : ""}</option>`).join("");
+}
+
+function pipHTML(action) {
+  if (!ACTIONS[action]) return "";
+  return `<span class="pip act-${action}" aria-hidden="true"><svg><use href="#i-${action}"/></svg></span>`;
+}
+
+function slotHTML({ item, slot, count, action, attrs = "", classes = "", tag = "button" }) {
+  if (!slot) return `<div class="slot empty" aria-hidden="true"></div>`;
+  const n = count ?? slot.count ?? 1;
+  const name = item ? item.name : `Unknown item ${slot.id}`;
+  const label = `${name}${n > 1 ? `, ${n}` : ""}${ACTIONS[action] ? `: ${ACTIONS[action].short}` : ""}`;
+  const icon = item?.icon ? `<img src="${esc(item.icon)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : `<span class="noicon">?</span>`;
+  const typeAttr = tag === "button" ? ` type="button" aria-label="${esc(label)}"` : ` aria-hidden="true"`;
+  return `<${tag} class="slot r-${esc(item?.rarity || "Basic")} ${classes}"${typeAttr} ${attrs}>${icon}${n > 1 ? `<span class="cnt">${n}</span>` : ""}${pipHTML(action)}</${tag}>`;
+}
+
+const inScope = s => ui.scope === "all" || s.cid === ui.scope;
+const usedText = cells => `${cells.filter(s => s.slot).length} / ${cells.length}`;
+
+function renderScope() {
+  if (!state.containers.some(c => c.id === ui.scope)) ui.scope = "all";
+  const todo = cid => result.byContainer.get(cid).filter(s => ACTIONS[s.action]).length;
+  const label = c => c.kind === "bank" ? "Bank" : c.kind === "shared" ? "Shared inventory" : c.name;
+  const opts = [`<option value="all">Everything (${result.slots.filter(s => ACTIONS[s.action]).length} to do)</option>`,
+    ...state.containers.map(c => `<option value="${esc(c.id)}">${esc(label(c))} (${todo(c.id)} to do)</option>`)];
+  $("#scope").innerHTML = opts.join("");
+  $("#scope").value = ui.scope;
+  $("#scopeField").hidden = state.containers.length < 2 || ui.view !== "now";
+}
+
+function cellHTML(s) {
+  if (!s.slot) return slotHTML({});
+  const cls = [
+    ui.filter && s.action !== ui.filter ? "dim" : "",
+    ui.selected?.view === "now" && ui.selected.index === s.index ? "sel" : "",
+    prefs.done.has(doneKey(s)) ? "done" : "",
+  ].join(" ");
+  return slotHTML({ item: s.item, slot: s.slot, action: s.action, classes: cls, attrs: `data-index="${s.index}"` });
+}
+
+function containerHTML(c) {
+  const cells = result.byContainer.get(c.id);
+  if (c.kind === "bank") {
+    const tabs = [];
+    for (let t = 0; t < cells.length; t += TAB_SIZE) {
+      const tab = cells.slice(t, t + TAB_SIZE);
+      tabs.push(`<div class="tab"><div class="tabhead"><h3>Tab ${t / TAB_SIZE + 1}</h3><span>${usedText(tab)}</span></div><div class="grid">${tab.map(cellHTML).join("")}</div></div>`);
+    }
+    return `<section><h3 class="loc-title">Bank <span>${usedText(cells)} slots used</span></h3><div class="tabs">${tabs.join("")}</div></section>`;
+  }
+  if (c.kind === "shared") {
+    return `<section><h3 class="loc-title">Shared inventory <span>${usedText(cells)} slots used</span></h3>
+      <div class="tabs"><div class="tab"><div class="grid">${cells.map(cellHTML).join("")}</div></div></div></section>`;
+  }
+  const bags = c.bags.map(b => {
+    const bagCells = cells.slice(b.start, b.start + b.len);
+    const name = state.items.get(b.id)?.name || "Bag";
+    return `<div class="baglabel"><span>Bag ${b.n} · ${esc(name)}</span><span>${usedText(bagCells)}</span></div><div class="grid">${bagCells.map(cellHTML).join("")}</div>`;
+  }).join("");
+  return `<div class="tab"><div class="tabhead"><h3>${esc(c.name)}</h3><span>${usedText(cells)}</span></div>${bags || `<p class="baglabel">No bags</p>`}</div>`;
+}
+
+function renderBank() {
+  const nowView = ui.view === "now";
+  $("#viewNow").setAttribute("aria-pressed", String(nowView));
+  $("#viewAfter").setAttribute("aria-pressed", String(!nowView));
+  $("#filters").hidden = !nowView;
+  $("#afterNote").hidden = nowView;
+  $("#scopeField").hidden = state.containers.length < 2 || !nowView;
+
+  if (nowView) {
+    const visible = result.slots.filter(inScope);
+    const counts = {};
+    for (const s of visible) if (ACTIONS[s.action]) counts[s.action] = (counts[s.action] || 0) + 1;
+    $("#filters").innerHTML = `<button type="button" class="chip all" data-filter="" aria-pressed="${!ui.filter}">All <b>${visible.filter(s => s.slot).length}</b></button>` +
+      PLAN_ORDER.filter(a => counts[a]).map(a => `<button type="button" class="chip" data-filter="${a}" aria-pressed="${ui.filter === a}">${pipHTML(a)}${ACTIONS[a].short} <b>${counts[a]}</b></button>`).join("");
+
+    const shown = state.containers.filter(c => ui.scope === "all" || c.id === ui.scope);
+    const chars = shown.filter(c => c.kind === "character");
+    const sections = shown.filter(c => c.kind !== "character").map(containerHTML);
+    if (chars.length) {
+      const used = chars.reduce((n, c) => n + result.byContainer.get(c.id).filter(s => s.slot).length, 0);
+      const total = chars.reduce((n, c) => n + c.cells.length, 0);
+      sections.push(`<section><h3 class="loc-title">${chars.length > 1 ? "Characters" : "Character"} <span>${used} / ${total} bag slots used</span></h3><div class="tabs">${chars.map(containerHTML).join("")}</div></section>`);
+    }
+    $("#tabs").innerHTML = sections.join("");
+  } else {
+    $("#tabs").innerHTML = `<div class="tabs">` + result.layout.map((tab, ti) => {
+      const names = tab.parts.map(p => CATEGORY_NAMES[p.cat]).join(" · ") || "Empty";
+      let html = "";
+      for (let i = 0; i < TAB_SIZE; i++) {
+        const e = tab.entries[i];
+        if (!e) { html += slotHTML({}); continue; }
+        const sel = ui.selected?.view === "after" && ui.selected.tab === ti && ui.selected.pos === i ? "sel" : "";
+        html += slotHTML({ item: e.item, slot: e.slot, count: e.count, classes: sel, attrs: `data-tab="${ti}" data-pos="${i}"` });
+      }
+      return `<div class="tab"><div class="tabhead"><h3>Tab ${ti + 1}</h3><span>${esc(names)}</span></div><div class="grid">${html}</div></div>`;
+    }).join("") + `</div>`;
+  }
+}
+
+function itemLine(item, slot) {
+  if (!item) return `Item ${slot.id}`;
+  const d = item.details || {};
+  const kind = { UpgradeComponent: "Upgrade", CraftingMaterial: "Crafting material", MiniPet: "Miniature", Gathering: "Gathering tool" }[item.type] || item.type;
+  const sub = d.type && d.type !== "Default" && d.type !== "Generic" ? ` (${d.type.replace(/([a-z])([A-Z])/g, "$1 $2")})` : "";
+  const lvl = item.level ? ` · Level ${item.level}` : "";
+  return `${item.rarity}${lvl} · ${kind}${sub}`;
+}
+
+function bindingText(slot) {
+  if (slot.binding === "Character") return `Soulbound${slot.bound_to ? ` to ${slot.bound_to}` : ""}`;
+  if (slot.binding === "Account") return "Account bound";
+  return "";
+}
+
+function renderInspector() {
+  const el = $("#inspector");
+  const sel = ui.selected;
+  el.classList.toggle("open", !!sel);
+  if (!sel) {
+    el.innerHTML = `<div class="ins-empty"><h3>Pick a slot</h3><p>Select any slot to see what it is, why it's in the plan and what it's worth.</p></div>`;
+    return;
+  }
+
+  let s, item, slot, count, verdict, extraFacts = [];
+  if (sel.view === "now") {
+    s = result.slots[sel.index];
+    if (!s || !s.slot) { ui.selected = null; return renderInspector(); }
+    ({ item, slot } = s);
+    count = slot.count || 1;
+    extraFacts.push(["Where", s.where]);
+    const others = result.slots.filter(o => o.slot && o.index !== s.index && o.slot.id === slot.id);
+    if (others.length) {
+      const list = others.slice(0, 4).map(o => `${o.where}${o.slot.count > 1 ? ` (${o.slot.count.toLocaleString()})` : ""}`);
+      if (others.length > 4) list.push(`${others.length - 4} more`);
+      extraFacts.push(["Also in", list.join("; ")]);
+    }
+    if (ACTIONS[s.action]) {
+      verdict = `<div class="verdict">${pipHTML(s.action)}<div><strong>${esc(ACTIONS[s.action].title)}${s.partial ? ` (${s.deposit.toLocaleString()} of ${count.toLocaleString()})` : ""}</strong></div>
+        <p>${esc(s.reason || "")}</p>${s.alt ? `<p class="alt">${esc(s.alt)}</p>` : ""}</div>`;
+    } else {
+      verdict = `<div class="verdict"><span></span><div><strong>Keep</strong></div><p>${esc(s.reason || "")}</p>${s.alt ? `<p class="alt">${esc(s.alt)}</p>` : ""}</div>`;
+    }
+  } else {
+    const e = result.layout[sel.tab]?.entries[sel.pos];
+    if (!e) { ui.selected = null; return renderInspector(); }
+    ({ item, slot, count } = e);
+    extraFacts.push(["Goes to", `Tab ${sel.tab + 1}, slot ${sel.pos + 1}`]);
+    extraFacts.push(["Now in", e.from.map(f => f.where).join("; ")]);
+    verdict = `<div class="verdict"><span></span><div><strong>${esc(CATEGORY_NAMES[e.cat])}</strong></div><p>${e.from.length > 1 ? `Merged from ${e.from.length} stacks.` : "Kept in the bank."}</p></div>`;
+  }
+
+  const price = item && isTradeable(slot, item) ? state.prices.get(item.id) : null;
+  const facts = [...extraFacts];
+  if (count > 1) facts.push(["Count", count.toLocaleString()]);
+  const bind = bindingText(slot);
+  if (bind) facts.push(["Binding", esc(bind)]);
+  if (slot.charges) facts.push(["Charges", slot.charges]);
+  const owned = isUnlocked(item);
+  if (owned != null) {
+    facts.push(EQUIP.has(item.type)
+      ? ["Skin", owned ? "In your wardrobe" : "Not in your wardrobe yet"]
+      : ["Unlocked", owned ? "Yes, your account has it" : "Not yet"]);
+  }
+  // Every unfinished collection this item, its skin or its mini still counts toward.
+  const colls = item ? [...needsFor("items", item.id), ...needsFor("skins", item.default_skin), ...needsFor("minis", item.details?.minipet_id)]
+    .filter((c, i, all) => all.findIndex(o => o.id === c.id) === i) : [];
+  if (colls.length) {
+    const names = colls.slice(0, 4).map(c => c.name);
+    if (colls.length > 4) names.push(`${colls.length - 4} more`);
+    facts.push(["Collections", esc(names.join("; "))]);
+  }
+  if (state.storable.has(slot.id)) facts.push(["In storage", `${(state.storage.get(slot.id) || 0).toLocaleString()} of ${state.capacity.toLocaleString()}`]);
+  const upgrades = [...(slot.upgrades || []), ...(slot.infusions || [])].map(id => state.items.get(id)?.name || `Item ${id}`);
+  if (upgrades.length) facts.push(["Upgrades", esc(upgrades.join(", "))]);
+  if (price && tpUnit(price)) {
+    facts.push(["Sell now", `${coinHTML(Math.floor(price.now * TP_KEEP))} each`]);
+    if (price.list) facts.push(["Listing", `${coinHTML(Math.floor(price.list * TP_KEEP))} each`]);
+  } else if (item) {
+    facts.push(["Trading Post", isTradeable(slot, item) ? "No current orders" : "Can't be traded"]);
+  }
+  if (item && item.vendor_value && !(item.flags || []).includes("NoSell")) facts.push(["Merchant", `${coinHTML(item.vendor_value)} each`]);
+
+  const plainText = new Set(["Where", "Also in", "Goes to", "Now in"]);
+  const factsHTML = facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${plainText.has(k) ? esc(v) : v}</dd>`).join("");
+  const wiki = item ? `<a href="https://wiki.guildwars2.com/index.php?search=${encodeURIComponent(item.name)}" target="_blank" rel="noopener">Wiki</a>` : "";
+  const chat = item?.chat_link ? `<div class="chatrow"><code id="chatCode">${esc(item.chat_link)}</code><button type="button" class="btn ghost small" id="copyChat">Copy chat code</button>${wiki}</div>` : wiki;
+  const keepBtn = item ? `<div class="chatrow"><button type="button" class="btn ghost small" id="keepToggle">${prefs.keep.has(item.id) ? "Remove from always-keep" : "Always keep this item"}</button>${colls.length
+    ? `<button type="button" class="btn ghost small" id="ignoreColls">${colls.length > 1 ? "Not doing these collections" : "Not doing this collection"}</button>` : ""}</div>` : "";
+
+  el.innerHTML = `
+    <button type="button" class="btn ghost small ins-close" id="closeIns">Close</button>
+    <div class="ins-top">${slotHTML({ item, slot, count, tag: "div" })}
+      <div><h3 class="rname r-${esc(item?.rarity || "Basic")}">${esc(item ? item.name : `Unknown item ${slot.id}`)}</h3><p>${esc(itemLine(item, slot))}</p></div></div>
+    ${verdict}
+    <dl class="facts">${factsHTML}</dl>
+    ${keepBtn}
+    ${chat}`;
+
+  $("#closeIns").addEventListener("click", () => { ui.selected = null; renderBank(); renderInspector(); });
+  $("#keepToggle")?.addEventListener("click", () => setKeep(item, !prefs.keep.has(item.id)));
+  $("#ignoreColls")?.addEventListener("click", () => setIgnored(colls, true));
+  $("#copyChat")?.addEventListener("click", async e => {
+    const btn = e.currentTarget;
+    try { await navigator.clipboard.writeText(item.chat_link); btn.textContent = "Copied"; }
+    catch {
+      const r = document.createRange(); r.selectNodeContents($("#chatCode"));
+      const w = getSelection(); w.removeAllRanges(); w.addRange(r);
+      btn.textContent = "Press Ctrl+C";
+    }
+  });
+}
+
+const planRows = () => result.slots.filter(s => ACTIONS[s.action] && inScope(s));
+
+function renderProgress() {
+  const rows = planRows();
+  const done = rows.filter(s => prefs.done.has(doneKey(s))).length;
+  $("#planProgress").innerHTML = rows.length
+    ? `<span><b>${done}</b> of ${rows.length} done</span>${done ? `<button type="button" class="linkish" id="clearDone">Clear ticks</button>` : ""}`
+    : "";
+  $("#clearDone")?.addEventListener("click", () => {
+    const cleared = rows.map(doneKey).filter(k => prefs.done.has(k));
+    cleared.forEach(k => prefs.done.delete(k));
+    savePrefs();
+    renderBank();
+    renderPlan();
+    toast(`Cleared ${plural(cleared.length, "tick")}.`, () => { cleared.forEach(k => prefs.done.add(k)); savePrefs(); renderBank(); renderPlan(); });
+  });
+}
+
+function renderKeepList() {
+  const wasOpen = $("#keepList details")?.open;
+  if (!prefs.keep.size) {
+    $("#keepList").innerHTML = "";
+    return;
+  }
+  const entries = [...prefs.keep.entries()].sort((a, b) => (a[1].name || "").localeCompare(b[1].name || ""));
+  $("#keepList").innerHTML = `<details class="keeplist"${wasOpen ? " open" : ""}>
+    <summary>Always-keep list <span>(${prefs.keep.size})</span></summary>
+    <ul>${entries.map(([id, v]) => `<li>${v.icon ? `<img src="${esc(v.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}<span>${esc(v.name || `Item ${id}`)}</span><button type="button" data-unkeep="${id}" aria-label="Remove ${esc(v.name || `item ${id}`)} from the always-keep list">Remove</button></li>`).join("")}</ul>
+    <p>These are never suggested for selling, salvaging, using or destroying. They can still be sent to Material Storage or merged into one stack.</p>
+  </details>`;
+}
+
+function renderCollList() {
+  const wasOpen = $("#collList details")?.open;
+  const rows = result.slots.filter(s => s.forCollections && inScope(s));
+  if (!rows.length && !prefs.ignore.size) {
+    $("#collList").innerHTML = "";
+    return;
+  }
+  const items = rows.map(s => {
+    const name = s.item ? s.item.name : `Unknown item ${s.slot.id}`;
+    const count = s.slot.count > 1 ? ` ×${s.slot.count.toLocaleString()}` : "";
+    return `<li class="collrow">${slotHTML({ item: s.item, slot: s.slot, tag: "div" })}
+      <div class="ctext"><button type="button" class="pname rname r-${esc(s.item?.rarity || "Basic")}" data-goto="${s.index}">${esc(name)}${esc(count)}</button><span class="preason">${esc(s.reason)}</span><span class="ploc">${esc(s.where)}</span></div>
+      <button type="button" class="pkeep" data-ignore="${s.index}">${s.forCollections.length > 1 ? "Not doing these" : "Not doing this"}</button></li>`;
+  }).join("");
+  const ignored = [...prefs.ignore.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([id, name]) => `<li><span>${esc(name)}</span><button type="button" data-unignore="${id}" aria-label="Stop ignoring ${esc(name)}">Stop ignoring</button></li>`).join("");
+  $("#collList").innerHTML = `<details class="keeplist"${wasOpen ? " open" : ""}>
+    <summary>Kept for collections <span>(${rows.length})</span></summary>
+    <p>Your unfinished collections still need these, so the plan leaves them alone. Not doing a collection? Ignore it and its items go back into the plan.</p>
+    ${rows.length ? `<ol class="collrows">${items}</ol>` : ""}
+    ${ignored ? `<p>Collections you're ignoring:</p><ul>${ignored}</ul>` : ""}
+  </details>`;
+}
+
+function renderPlan() {
+  $("#collNotice").hidden = state.colls !== "loading";
+  renderProgress();
+  renderCollList();
+  renderKeepList();
+  const rows = planRows();
+  const groups = PLAN_ORDER.map(a => ({ a, rows: rows.filter(s => s.action === a) })).filter(g => g.rows.length);
+  if (!groups.length) {
+    $("#planGroups").innerHTML = `<div class="empty-plan">Nothing to clean up here. Every slot holds something worth keeping, and nothing can go to Material Storage.</div>`;
+    return;
+  }
+  $("#planGroups").innerHTML = groups.map(({ a, rows }) => {
+    const freed = rows.filter(s => !s.partial).length;
+    const value = a === "sell" || a === "vendor" ? rows.reduce((n, s) => n + (s.value || 0), 0) : 0;
+    const meta = `${plural(rows.length, "slot")}${freed !== rows.length ? `, frees ${freed}` : ""}${value ? ` · ${coinHTML(value)}` : ""}`;
+    const items = rows.map(s => {
+      const id = `done-${s.index}`;
+      const done = prefs.done.has(doneKey(s));
+      const name = s.item ? s.item.name : `Unknown item ${s.slot.id}`;
+      const count = s.slot.count > 1 ? ` ×${s.slot.count.toLocaleString()}` : "";
+      const val = (a === "sell" || a === "vendor" || a === "salvage") && s.value ? coinHTML(s.value) : (a === "deposit" ? `${s.deposit.toLocaleString()} in` : "");
+      // Deposits and stacks lose nothing, so they don't need an always-keep button.
+      const keepBtn = s.item && a !== "deposit" && a !== "stack"
+        ? `<button type="button" class="pkeep" data-keep="${s.item.id}" aria-label="Always keep ${esc(name)}">Always keep</button>` : "";
+      return `<li class="prow${done ? " done" : ""}">
+        <input type="checkbox" id="${id}" data-done="${s.index}"${done ? " checked" : ""} aria-label="Done: ${esc(name)}">
+        ${slotHTML({ item: s.item, slot: s.slot, tag: "div" })}
+        <div class="ptext"><button type="button" class="pname rname r-${esc(s.item?.rarity || "Basic")}" data-goto="${s.index}">${esc(name)}${esc(count)}</button><span class="preason">${esc(s.reason || "")}${s.alt ? ` ${esc(s.alt)}` : ""}</span></div>
+        <span class="ploc">${esc(s.where)}</span>
+        <span class="pval">${val}</span>
+        ${keepBtn}
+      </li>`;
+    }).join("");
+    return `<section class="pgroup" aria-label="${esc(ACTIONS[a].title)}">
+      <div class="pghead">${pipHTML(a)}<h3>${esc(ACTIONS[a].title)}</h3><span class="meta">${meta}</span><p class="step">${esc(ACTIONS[a].step)}</p></div>
+      <ol class="prows">${items}</ol></section>`;
+  }).join("");
+}
+
+let toastTimer = 0;
+function toast(msg, undo) {
+  const el = $("#toast");
+  el.innerHTML = `<span>${esc(msg)}</span>${undo ? `<button type="button" id="toastUndo">Undo</button>` : ""}`;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 7000);
+  $("#toastUndo")?.addEventListener("click", () => { el.hidden = true; undo(); });
+}
+
+function setIgnored(list, on, quiet = false) {
+  for (const c of list) {
+    if (on) prefs.ignore.set(c.id, c.name); else prefs.ignore.delete(c.id);
+  }
+  savePrefs();
+  render();
+  if (!quiet) {
+    toast(on ? `Ignoring ${collText(list, false)}. ${list.length > 1 ? "Their" : "Its"} items are back in the plan.`
+             : `${collText(list)} ${list.length > 1 ? "are" : "is"} protected again.`,
+      () => setIgnored(list, !on, true));
+  }
+}
+
+function setKeep(item, on, quiet = false) {
+  const saved = prefs.keep.get(item.id) || { name: item.name, icon: item.icon || "" };
+  if (on) prefs.keep.set(item.id, saved); else prefs.keep.delete(item.id);
+  savePrefs();
+  render();
+  if (!quiet) {
+    toast(on ? `${saved.name} will always be kept.` : `${saved.name} is off your always-keep list.`,
+      () => setKeep({ id: item.id, ...saved }, !on, true));
+  }
+}
+
+/* ---------- Events ---------- */
+
+$("#keyForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const key = $("#apiKey").value.trim();
+  if (!key) { setStatus("Paste your API key first. You can create one on your ArenaNet account page.", true); return; }
+  if (/\s/.test(key)) { setStatus("That key contains spaces. Copy it again from your ArenaNet account page.", true); return; }
+  if ($("#rememberKey").checked) store.set(KEY_STORE, key); else store.del(KEY_STORE);
+  loadAccount(key);
+});
+$("#exampleBtn").addEventListener("click", () => loadExample());
+$("#viewNow").addEventListener("click", () => { ui.view = "now"; ui.selected = null; renderBank(); renderInspector(); });
+$("#viewAfter").addEventListener("click", () => { ui.view = "after"; ui.selected = null; renderBank(); renderInspector(); });
+
+$("#scope").addEventListener("change", e => {
+  ui.scope = e.target.value;
+  ui.filter = null;
+  if (ui.selected?.view === "now" && !inScope(result.slots[ui.selected.index])) ui.selected = null;
+  renderBank();
+  renderInspector();
+  renderPlan();
+});
+
+$("#filters").addEventListener("click", e => {
+  const chip = e.target.closest("[data-filter]");
+  if (!chip) return;
+  const f = chip.dataset.filter || null;
+  ui.filter = ui.filter === f ? null : f;
+  renderBank();
+});
+
+$("#tabs").addEventListener("click", e => {
+  const cell = e.target.closest("button.slot");
+  if (!cell) return;
+  if (cell.dataset.index != null) ui.selected = { view: "now", index: +cell.dataset.index };
+  else ui.selected = { view: "after", tab: +cell.dataset.tab, pos: +cell.dataset.pos };
+  renderBank();
+  renderInspector();
+});
+
+$("#planGroups").addEventListener("change", e => {
+  const box = e.target.closest("[data-done]");
+  if (!box) return;
+  const key = doneKey(result.slots[+box.dataset.done]);
+  if (box.checked) prefs.done.add(key); else prefs.done.delete(key);
+  savePrefs();
+  box.closest(".prow").classList.toggle("done", box.checked);
+  renderProgress();
+  if (ui.view === "now") renderBank();
+});
+$("#planGroups").addEventListener("click", e => {
+  const keep = e.target.closest("[data-keep]");
+  if (keep) {
+    const item = state.items.get(+keep.dataset.keep);
+    if (item) setKeep(item, true);
+    return;
+  }
+  const go = e.target.closest("[data-goto]");
+  if (go) gotoSlot(+go.dataset.goto);
+});
+
+function gotoSlot(index) {
+  ui.view = "now";
+  ui.filter = null;
+  ui.selected = { view: "now", index };
+  renderBank();
+  renderInspector();
+  const cell = document.querySelector(`#tabs [data-index="${index}"]`);
+  cell?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  cell?.focus({ preventScroll: true });
+}
+
+$("#collList").addEventListener("click", e => {
+  const go = e.target.closest("[data-goto]");
+  if (go) return gotoSlot(+go.dataset.goto);
+  const ignore = e.target.closest("[data-ignore]");
+  if (ignore) return setIgnored(result.slots[+ignore.dataset.ignore].forCollections, true);
+  const un = e.target.closest("[data-unignore]");
+  if (un) {
+    const id = +un.dataset.unignore;
+    setIgnored([{ id, name: prefs.ignore.get(id) }], false);
+  }
+});
+
+$("#capacity").addEventListener("change", e => {
+  state.capacity = +e.target.value;
+  if (state.source === "account") store.set(CAP_STORE, String(state.capacity));
+  render();
+});
+
+$("#keepList").addEventListener("click", e => {
+  const btn = e.target.closest("[data-unkeep]");
+  if (!btn) return;
+  const id = +btn.dataset.unkeep;
+  setKeep({ id, ...prefs.keep.get(id) }, false);
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && ui.selected) { ui.selected = null; renderBank(); renderInspector(); }
+});
+
+/* ---------- Start ---------- */
+
+(function start() {
+  const saved = store.get(KEY_STORE);
+  if (saved) {
+    $("#apiKey").value = saved;
+    $("#rememberKey").checked = true;
+    loadAccount(saved);
+  } else {
+    loadExample();
+  }
+})();
+</script>
+</body>
+</html>
