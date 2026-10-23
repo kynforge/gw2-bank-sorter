@@ -45,6 +45,29 @@ pub fn fingerprint(rgba: &[u8], w: u32, h: u32) -> Vec<u8> {
     out
 }
 
+/// The same fingerprint for a `size`×`size` square whose top-left is (x, y) inside a larger
+/// `w`×`h` image. Parts outside the image count as black.
+pub fn fingerprint_in(rgba: &[u8], w: u32, h: u32, x: i32, y: i32, size: u32) -> Vec<u8> {
+    let n = size as usize;
+    let mut square = vec![0u8; n * n * 4];
+    for row in 0..n {
+        let sy = y + row as i32;
+        if sy < 0 || sy >= h as i32 {
+            continue;
+        }
+        for col in 0..n {
+            let sx = x + col as i32;
+            if sx < 0 || sx >= w as i32 {
+                continue;
+            }
+            let src = ((sy as usize) * (w as usize) + sx as usize) * 4;
+            let dst = (row * n + col) * 4;
+            square[dst..dst + 4].copy_from_slice(&rgba[src..src + 4]);
+        }
+    }
+    fingerprint(&square, size, size)
+}
+
 /// Puts semi-transparent pixels onto the slot background, as the game draws them.
 pub fn blend_alpha(rgba: &mut [u8]) {
     for px in rgba.chunks_exact_mut(4) {
@@ -102,6 +125,15 @@ mod tests {
         let b = fingerprint(small.as_raw(), 40, 40);
         let diff: u32 = a.iter().zip(&b).map(|(x, y)| (*x as i32 - *y as i32).unsigned_abs()).sum();
         assert!(diff / (LEN as u32) < 12, "mean difference {}", diff / LEN as u32);
+    }
+
+    #[test]
+    fn fingerprint_inside_a_larger_image_matches_a_crop() {
+        let big = image::RgbaImage::from_fn(120, 90, |x, y| image::Rgba([(x * 2) as u8, (y * 3) as u8, ((x + y) % 255) as u8, 255]));
+        let crop = image::imageops::crop_imm(&big, 30, 20, 44, 44).to_image();
+        assert_eq!(fingerprint_in(big.as_raw(), 120, 90, 30, 20, 44), fingerprint(crop.as_raw(), 44, 44));
+        // Hanging off the right edge: the missing part reads as black, and nothing panics.
+        assert_eq!(fingerprint_in(big.as_raw(), 120, 90, 100, 60, 44).len(), LEN);
     }
 
     #[test]

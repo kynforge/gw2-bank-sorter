@@ -10,7 +10,7 @@ A personal helper for Guild Wars 2 that floats over the game. It reads your acco
 | **Bank** | The cleanup planner from `gw2-bank-sorter.html`: what to deposit, use, sell, salvage or destroy, plus a suggested tab layout. It also checks crafting recipes before suggesting a destroy, flags high-value items, and shows "Used to craft" for any item. |
 | **Find** | Searches every item on the account by name: bank, Material Storage, shared slots, every character's bags and gear, and the Legendary Armory. Also lists items spread across three or more characters. |
 | **Builds** | A character's real stats from their equipped gear, and stat sets that suit a goal better (power, condition, hybrid, boon support or healing). Legendary gear is marked as a free swap. Import an Elite Insights JSON log to use your real Might and Fury uptimes. |
-| **Macro** | Sorts the bank into the suggested tabs, one move per key press, checking slot icons on screen before and after each move. It can also set up a destroy: it drags the item out, types its name if you press the key, and leaves the final click to you. |
+| **Macro** | While you hold a key, clears out what the cleanup plan sells into your bags, or tidies the bank into the suggested tabs. It scrolls the bank as needed and checks slot icons on screen before and after every move. Destroys are one press each and you confirm. |
 | **Settings** | API key, theme and opacity, warning thresholds and hotkeys. |
 
 ## Before you start
@@ -29,33 +29,36 @@ A personal helper for Guild Wars 2 that floats over the game. It reads your acco
 |------|--------------|
 | Ctrl+Shift+G | Show or hide the overlay |
 | Ctrl+Shift+C | Let clicks pass through to the game (the overlay dims) |
-| F7 | Macro: mark a point while calibrating |
-| F8 | Macro: do the next step |
+| F7 | Macro: find the bank or bags under the pointer |
+| F8 | Macro: hold to run, let go to stop (a tap does one step) |
 | F9 | Macro: stop and disarm |
 | F10 | Macro: type the item name into a destroy prompt (only within 20 seconds of a destroy step) |
 
-The macro keys only work while the macro is armed in the Macro tab. You can change any of these in Settings.
+The macro keys only work after you press Start in the Macro tab, and stop when you leave it. You can change any of these in Settings.
 
 ## Using the macro
 
-1. **Clean up first.** Do the cleanup plan, wait a few minutes, then press Refresh, so the API matches your bank.
-2. **Open your bank in game** and scroll so the tabs you want to sort are visible.
-3. **Arm the keys** in the Macro tab.
-4. **Mark the bank.**
-   - Hover over the first slot of tab 1 and press F7, then the last slot in that row and press F7 again.
-   - Mark the first slot of each other visible tab the same way.
-   - Mark a spot on open ground in the game world. The pointer rests there while slots are checked, so item tooltips don't get in the way, and destroyed items are dropped there.
-5. **Press Verify.** It checks every marked slot against what the API says is there, and learns what an empty slot looks like. Nothing moves in this step.
-6. **Press F8 in the game** for each step. Rings show where the next move goes.
+1. **Clean up the plan first.** Do the cleanup plan in the Bank tab, wait a few minutes and press Refresh, so the API matches your bank.
+2. **Open the bank and your inventory** in game. Make the bank window tall enough to show two tabs, so the macro can scroll.
+3. **Find the windows.** In the Macro tab press **Start**.
+   - Hover over the middle of the first slot of the top bank tab you can see and press **F7**.
+   - Then do the same on the first slot of your inventory, or press "Skip" to work in the bank only.
+
+   The app finds every slot by matching your item icons on screen. It works out the spacing, slots per row, the other tabs and which character you're on, then reports how many slots match.
+4. **Pick a job.**
+   - **Clear out for selling** takes what the cleanup plan deposits, uses, sells or salvages out of the bank and into your bags. You then deposit, sell and salvage in game as usual.
+   - **Tidy the bank** sorts what stays into the suggested tabs.
+5. **Hold F8 in the game.** It keeps going while you hold the key and stops the moment you let go; a tap does one step. It scrolls the bank when a step needs a tab that's off screen. If two tabs can't show together, it carries the item through an empty bag slot.
+6. **Destroys** (optional, under Clear out) are never part of a held run. Each one needs its own press of F8: it drags the item out of your bags, F10 types its name if the game asks, and you click confirm yourself.
 
 The macro stops, without moving anything, whenever:
 - Guild Wars 2 isn't the window in front;
 - a slot doesn't look like what the plan expects;
 - a move doesn't land the way it should.
 
-It never presses Enter or clicks confirm.
+Between moves the pointer rests on open ground, so item tooltips don't get in the way. It never presses Enter or clicks confirm.
 
-ArenaNet's [macro policy](https://help.guildwars2.com/hc/en-us/articles/360013762153) allows attended macros where each key press does one action, so stay at the keyboard while you use it.
+ArenaNet's [macro policy](https://help.guildwars2.com/hc/en-us/articles/360013762153) allows attended macros and auto-clickers that work through a stack of items. Holding the key keeps you in control the whole time, so stay at the keyboard while it runs.
 
 ## Running from source
 

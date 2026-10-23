@@ -2,8 +2,8 @@
 export async function registerAll(pairs, { register, unregister }) {
   const done = [];
   try {
-    for (const [accel, fn] of pairs) {
-      await register(accel, fn);
+    for (const [accel, ...handlers] of pairs) {
+      await register(accel, ...handlers);
       done.push(accel);
     }
     return done;

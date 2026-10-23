@@ -46,17 +46,24 @@ function eventAccel(e) {
 const browserKeys = new Map();
 if (!isDesktop && typeof window !== "undefined") {
   window.addEventListener("keydown", e => {
-    const fn = browserKeys.get(eventAccel(e));
-    if (fn) { e.preventDefault(); fn(); }
+    const fns = browserKeys.get(eventAccel(e));
+    if (fns) { e.preventDefault(); fns.press(); }
+  });
+  window.addEventListener("keyup", e => {
+    for (const [accel, fns] of browserKeys) if (accel.endsWith(e.key.toLowerCase())) fns.release?.();
   });
 }
 
 export const hotkeys = {
   // Registers a global hotkey. A key another program already holds fails with a readable error.
-  async register(accel, fn) {
-    if (!isDesktop) { browserKeys.set(normalize(accel), fn); return; }
+  // onRelease is optional, for keys that do something while held.
+  async register(accel, onPress, onRelease) {
+    if (!isDesktop) { browserKeys.set(normalize(accel), { press: onPress, release: onRelease }); return; }
     await unregister(accel).catch(() => {});
-    await register(accel, event => { if (event.state === "Pressed") fn(); });
+    await register(accel, event => {
+      if (event.state === "Pressed") onPress();
+      else if (event.state === "Released") onRelease?.();
+    });
   },
   async unregister(accel) {
     if (!isDesktop) { browserKeys.delete(normalize(accel)); return; }

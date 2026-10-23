@@ -40,5 +40,6 @@ export function loadCalibration(key) {
   } catch { return emptyCalibration(); }
 }
 export function saveCalibration(key, calib) {
-  store.set(key, JSON.stringify({ ...calib, emptyFp: calib.emptyFp ? [...calib.emptyFp] : null }));
+  const plain = fp => (fp ? [...fp] : null);   // typed arrays don't survive JSON as arrays
+  store.set(key, JSON.stringify({ ...calib, emptyFp: plain(calib.emptyFp), inv: calib.inv ? { ...calib.inv, emptyFp: plain(calib.inv.emptyFp) } : null }));
 }

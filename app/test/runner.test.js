@@ -125,3 +125,121 @@ test("type name only within 20 seconds of a destroy step, and only in front", as
   assert.deepEqual(named(io.calls, "type").at(-1), ["type", "Item 7"]);
   assert.equal((await r2.typeName()).ok, false, "only once per destroy");
 });
+
+/* ---------- Hold to run ---------- */
+
+const moves = n => Array.from({ length: n }, (_, k) => ({ kind: "move", from: 2 * k, to: 2 * k + 1 }));
+const model = n => Array.from({ length: 2 * n }, (_, k) => `${k + 1}|`);
+// The key reads as held for the first `checks` asks, then released.
+const heldFor = checks => { let n = 0; return async () => n++ < checks; };
+
+test("holding the key keeps moving, letting go stops", async () => {
+  const io = fakeIo();
+  const r = createRunner(io, { keys });
+  r.load(moves(10), model(10));
+  const res = await r.runWhileHeld({ stillHeld: heldFor(3) });
+  // The press itself does the first step; three more checks said "still held".
+  assert.equal(res.steps, 4);
+  assert.equal(r.state.i, 4);
+  assert.match(res.message, /let go/);
+});
+
+test("a quick tap does exactly one step", async () => {
+  const io = fakeIo();
+  const r = createRunner(io, { keys });
+  r.load(moves(5), model(5));
+  const res = await r.runWhileHeld({ stillHeld: heldFor(0) });
+  assert.equal(res.steps, 1);
+  assert.equal(named(io.calls, "drag").length, 1);
+});
+
+test("a held run stops at the first check that fails", async () => {
+  let befores = 0;
+  const io = fakeIo({ judgeFn: (sig, phase) => ({ ok: !(phase === "before-from" && ++befores === 3), reason: "looks wrong" }) });
+  const r = createRunner(io, { keys });
+  r.load(moves(10), model(10));
+  const res = await r.runWhileHeld({ stillHeld: heldFor(99) });
+  assert.equal(res.ok, false);
+  assert.equal(res.steps, 2);
+  assert.equal(named(io.calls, "drag").length, 2);
+});
+
+test("destroys never run inside a held run, and each needs its own press", async () => {
+  const io = fakeIo();
+  const r = createRunner(io, { keys });
+  r.load([{ kind: "move", from: 0, to: 1 }, { kind: "destroy", from: 2 }, { kind: "move", from: 3, to: 4 }], ["1|", "2|", "3|", "4|", null]);
+  const first = await r.runWhileHeld({ stillHeld: heldFor(99) });
+  assert.equal(first.steps, 1, "stops before the destroy");
+  assert.match(first.message, /destroy/);
+  const second = await r.runWhileHeld({ stillHeld: heldFor(99) });
+  assert.equal(second.steps, 1, "the destroy runs alone");
+  assert.equal(r.state.i, 2);
+  assert.equal(named(io.calls, "drag").length, 2);
+});
+
+/* ---------- Scrolling and carrying through the bags ---------- */
+
+test("an off-screen tab is scrolled into view before the move", async () => {
+  const io = fakeIo();
+  const onScreen = new Set([0, 1]);
+  io.position = i => (onScreen.has(i) ? [100 + i * 40, 100] : null);
+  io.ensureVisible = async need => { io.calls.push(["ensure", need]); need.forEach(i => onScreen.add(i)); return { ok: true }; };
+  const r = createRunner(io, { keys });
+  r.load([{ kind: "move", from: 0, to: 70 }], Object.assign(Array(71).fill(null), { 0: "1|" }));
+  const res = await r.next();
+  assert.equal(res.ok, true, res.message);
+  assert.deepEqual(named(io.calls, "ensure")[0][1], [0, 70]);
+  assert.equal(named(io.calls, "drag").length, 1);
+});
+
+test("tabs too far apart go through an empty bag slot, and the swap still ends the same", async () => {
+  const io = fakeIo();
+  // Bag slots (100 and up) are always on screen; two bank tabs at once are not.
+  io.ensureVisible = async need => (need.filter(i => i < 100).length > 1 ? { ok: false, reason: "too far apart" } : { ok: true });
+  io.spareSlot = model => model.indexOf(null, 100);
+  const r = createRunner(io, { keys });
+  const model = Array(102).fill(null);
+  model[0] = "1|"; model[90] = "2|";
+  r.load([{ kind: "move", from: 0, to: 90 }], model);
+  const res = await r.runWhileHeld({ stillHeld: async () => true });
+  assert.equal(res.ok, true, res.message);
+  // Three drags: item to the bag, item to its place, the displaced item back to where the first came from.
+  assert.equal(named(io.calls, "drag").length, 3);
+  assert.equal(r.state.model[90], "1|");
+  assert.equal(r.state.model[0], "2|");
+  assert.equal(r.state.model[100], null);
+});
+
+test("no free bag slot to carry through: stops and says so", async () => {
+  const io = fakeIo();
+  io.ensureVisible = async need => (need.length > 1 ? { ok: false, reason: "too far apart" } : { ok: true });
+  io.spareSlot = () => -1;
+  const r = createRunner(io, { keys });
+  r.load([{ kind: "move", from: 0, to: 90 }], Object.assign(Array(91).fill(null), { 0: "1|", 90: "2|" }));
+  const res = await r.next();
+  assert.equal(res.ok, false);
+  assert.match(res.message, /bag slot/);
+  assert.equal(named(io.calls, "drag").length, 0);
+});
+
+test("checks are told which slot they're looking at", async () => {
+  const seen = [];
+  const io = fakeIo({ judgeFn: () => ({ ok: true }) });
+  io.judge = (fp, sig, phase, index) => { seen.push(index); return { ok: true }; };
+  const r = createRunner(io, { keys });
+  r.load([{ kind: "move", from: 3, to: 7 }], Object.assign(Array(8).fill(null), { 3: "1|" }));
+  await r.next();
+  assert.deepEqual(seen.slice(0, 2), [3, 7]);
+});
+
+test("if even the bag route can't be shown, it stops instead of looping", async () => {
+  const io = fakeIo();
+  io.ensureVisible = async () => ({ ok: false, reason: "Can't see the inventory." });
+  io.spareSlot = model => model.indexOf(null, 100);
+  const r = createRunner(io, { keys });
+  r.load([{ kind: "move", from: 0, to: 90 }], Object.assign(Array(102).fill(null), { 0: "1|", 90: "2|" }));
+  const res = await r.next();
+  assert.equal(res.ok, false);
+  assert.match(res.message, /inventory/);
+  assert.equal(named(io.calls, "drag").length, 0);
+});

@@ -46,6 +46,22 @@ mod native {
         send(&[mouse(ax, ay, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK)])
     }
 
+    /// Turns the mouse wheel over `at` (positive ticks scroll up), then rests the pointer at `park`.
+    pub fn scroll(at: (i32, i32), ticks: i32, park: Option<(i32, i32)>) -> Result<(), String> {
+        move_to(at.0, at.1)?;
+        sleep(Duration::from_millis(40));
+        let wheel = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 { mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: (ticks * 120) as _, dwFlags: MOUSEEVENTF_WHEEL, time: 0, dwExtraInfo: 0 } },
+        };
+        let sent = send(&[wheel]);
+        sleep(Duration::from_millis(250)); // let the bank window finish scrolling
+        if let Some((x, y)) = park {
+            let _ = move_to(x, y);
+        }
+        sent
+    }
+
     /// Moves the pointer without clicking, e.g. off the bank so no item tooltip covers the slots.
     pub fn park(to: (i32, i32)) -> Result<(), String> {
         move_to(to.0, to.1)
@@ -92,7 +108,7 @@ mod native {
 }
 
 #[cfg(windows)]
-pub use native::{drag, park, type_text};
+pub use native::{drag, park, scroll, type_text};
 
 #[cfg(test)]
 mod tests {
