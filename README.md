@@ -25,6 +25,10 @@ There's an example bank built in, so you can see how it works without a key.
 - **Saved progress**: ticked items are remembered per account until they're gone from your bank.
 - **Suggested bank layout** that groups gear, upgrades, consumables and materials into tabs.
 
+## GW2 Companion (desktop overlay)
+
+The `app/` folder holds a desktop app that floats over the game. It includes this planner along with event timers, an item finder, a gear optimizer and a one-key-per-move bank macro. See [app/README.md](app/README.md).
+
 ## Privacy
 
 Your API key is sent only to `api.guildwars2.com`. It's saved in your browser only if you tick "Remember on this computer". Your always-keep list, ticks and ignored collections are stored in your browser's local storage and never leave your machine.
